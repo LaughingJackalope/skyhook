@@ -1,0 +1,66 @@
+graph TB
+    subgraph "Container Registry"
+        ECR[Amazon ECR<br/>Container Images]
+        IMG[pytorch:2.1-cuda12<br/>15 GB Image]
+        SOCI_IDX[SOCI Index<br/>Block Mapping]
+        
+        IMG -.->|Generated from| SOCI_IDX
+    end
+    
+    subgraph "Traditional Image Pull"
+        direction TB
+        TRAD_START[Pod Scheduled]
+        TRAD_PULL[Download Entire<br/>15 GB Image]
+        TRAD_EXTRACT[Extract Layers<br/>to Disk]
+        TRAD_START_APP[Start Application]
+        
+        TRAD_START --> TRAD_PULL
+        TRAD_PULL -->|5-10 minutes| TRAD_EXTRACT
+        TRAD_EXTRACT --> TRAD_START_APP
+    end
+    
+    subgraph "SOCI Lazy Loading"
+        direction TB
+        SOCI_START[Pod Scheduled]
+        SOCI_MOUNT[Mount FUSE<br/>Filesystem]
+        SOCI_APP_START[Start Application<br/>Immediately]
+        SOCI_DEMAND[Fetch Blocks<br/>On-Demand]
+        
+        SOCI_START --> SOCI_MOUNT
+        SOCI_MOUNT -->|Seconds| SOCI_APP_START
+        SOCI_APP_START -.->|import torch| SOCI_DEMAND
+    end
+    
+    subgraph "NVMe Caching Layer"
+        NVME[NVMe RAID0<br/>/mnt/local-scratch]
+        CACHE_HIT{Block in<br/>Cache?}
+        LOCAL[Serve from<br/>Local NVMe<br/>Microsecond latency]
+        REMOTE[Fetch from ECR<br/>Cache to NVMe]
+    end
+    
+    ECR --> TRAD_PULL
+    ECR --> SOCI_IDX
+    
+    SOCI_IDX --> SOCI_MOUNT
+    
+    SOCI_DEMAND --> CACHE_HIT
+    CACHE_HIT -->|Yes| LOCAL
+    CACHE_HIT -->|No| REMOTE
+    
+    REMOTE -->|Store| NVME
+    LOCAL -.->|Read| NVME
+    
+    METRICS[Performance Impact:<br/>✓ 50%+ reduction in startup time<br/>✓ Node ready in seconds vs minutes<br/>✓ Better cluster utilization<br/>✓ Improved researcher experience]
+    
+    COMPARISON[Comparison:<br/>Traditional: 5-10 min wait<br/>SOCI: Near-instant start<br/>SOCI+NVMe: Fast + sustained]
+    
+    style SOCI_MOUNT fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style SOCI_APP_START fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style NVME fill:#4A90E2
+    style LOCAL fill:#D4EDDA
+    
+    style TRAD_PULL fill:#F8D7DA
+    style TRAD_EXTRACT fill:#F8D7DA
+    
+    style METRICS fill:#D4EDDA
+    style COMPARISON fill:#FFF3CD

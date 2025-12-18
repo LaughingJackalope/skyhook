@@ -1,0 +1,261 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Storage infrastructure for Skyhook foundation layer.
+  FSx for Lustre as persistent research data lake, KMS for encryption.
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Environment identifier (e.g., accel-usw2)
+
+  VpcId:
+    Type: String
+    Description: VPC ID from vpc.yaml stack
+
+  StorageSubnetId:
+    Type: String
+    Description: Storage subnet ID for FSx mount target
+
+  HpcSubnetIds:
+    Type: CommaDelimitedList
+    Description: HPC subnet IDs (for security group rules)
+
+  FsxStorageCapacity:
+    Type: Number
+    Default: 1200
+    Description: FSx storage capacity in GB (minimum 1200 for SCRATCH_2)
+    AllowedValues: [1200, 2400, 4800, 7200, 9600]
+
+  FsxDeploymentType:
+    Type: String
+    Default: PERSISTENT_2
+    Description: FSx deployment type (PERSISTENT_2 recommended for durability + KMS)
+    AllowedValues:
+      - SCRATCH_1
+      - SCRATCH_2
+      - PERSISTENT_1
+      - PERSISTENT_2
+
+  FsxThroughput:
+    Type: Number
+    Default: 125
+    Description: Per-unit storage throughput in MB/s/TiB (PERSISTENT types only)
+    AllowedValues: [125, 250, 500, 1000]
+
+  DataRepositoryPath:
+    Type: String
+    Default: ""
+    Description: Optional S3 path for data repository association (e.g., s3://bucket/prefix)
+
+Resources:
+  #============================================================================
+  # KMS Key for Storage Encryption
+  #============================================================================
+  StorageKmsKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub Skyhook ${Environment} storage encryption key
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: Allow FSx Service
+            Effect: Allow
+            Principal:
+              Service: fsx.amazonaws.com
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:GenerateDataKey*
+              - kms:DescribeKey
+              - kms:CreateGrant
+            Resource: "*"
+            Condition:
+              StringEquals:
+                kms:CallerAccount: !Ref AWS::AccountId
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-storage-key
+
+  StorageKmsAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub alias/skyhook-${Environment}-storage
+      TargetKeyId: !Ref StorageKmsKey
+
+  #============================================================================
+  # Security Group for FSx Lustre
+  #============================================================================
+  FsxSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub skyhook-${Environment}-fsx-sg
+      GroupDescription: Security group for FSx for Lustre
+      VpcId: !Ref VpcId
+      # Lustre requires specific ports
+      SecurityGroupIngress:
+        # Lustre traffic from HPC subnets
+        - IpProtocol: tcp
+          FromPort: 988
+          ToPort: 988
+          CidrIp: "10.0.32.0/19"
+          Description: Lustre from HPC subnet 1
+        - IpProtocol: tcp
+          FromPort: 988
+          ToPort: 988
+          CidrIp: "10.0.64.0/19"
+          Description: Lustre from HPC subnet 2
+        - IpProtocol: tcp
+          FromPort: 988
+          ToPort: 988
+          CidrIp: "10.0.10.0/22"
+          Description: Lustre from System subnet 1
+        - IpProtocol: tcp
+          FromPort: 988
+          ToPort: 988
+          CidrIp: "10.0.14.0/22"
+          Description: Lustre from System subnet 2
+        - IpProtocol: tcp
+          FromPort: 988
+          ToPort: 988
+          CidrIp: "10.0.18.0/22"
+          Description: Lustre from System subnet 3
+        # Lustre LNET ports
+        - IpProtocol: tcp
+          FromPort: 1021
+          ToPort: 1023
+          CidrIp: "10.0.0.0/16"
+          Description: Lustre LNET
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+          Description: Allow all outbound
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-fsx-sg
+
+  # Self-referencing rule for Lustre inter-node communication
+  FsxSecurityGroupSelfIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref FsxSecurityGroup
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !Ref FsxSecurityGroup
+      Description: Allow all traffic within FSx security group
+
+  #============================================================================
+  # FSx for Lustre File System
+  #============================================================================
+  FsxLustreFileSystem:
+    Type: AWS::FSx::FileSystem
+    Properties:
+      FileSystemType: LUSTRE
+      StorageCapacity: !Ref FsxStorageCapacity
+      SubnetIds:
+        - !Ref StorageSubnetId
+      SecurityGroupIds:
+        - !Ref FsxSecurityGroup
+      LustreConfiguration:
+        DeploymentType: !Ref FsxDeploymentType
+        # Throughput per TiB - only applies to PERSISTENT types
+        PerUnitStorageThroughput: !If [IsPersistent, !Ref FsxThroughput, !Ref "AWS::NoValue"]
+        WeeklyMaintenanceStartTime: "7:09:00"  # Sunday 2:09 AM PST
+        # Data repository association (if S3 path provided)
+        ImportPath: !If [HasDataRepository, !Ref DataRepositoryPath, !Ref "AWS::NoValue"]
+        ExportPath: !If [HasDataRepository, !Sub "${DataRepositoryPath}/export", !Ref "AWS::NoValue"]
+        AutoImportPolicy: !If [HasDataRepository, "NEW_CHANGED_DELETED", !Ref "AWS::NoValue"]
+      # KMS encryption only supported on PERSISTENT types
+      KmsKeyId: !If [IsPersistent, !Ref StorageKmsKey, !Ref "AWS::NoValue"]
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-fsx
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+
+  #============================================================================
+  # SSM Parameters (for cluster layer and node user-data consumption)
+  #============================================================================
+  FsxDnsNameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/fsx-dns-name
+      Type: String
+      Value: !GetAtt FsxLustreFileSystem.DNSName
+      Description: FSx for Lustre DNS name for mounting
+
+  FsxMountNameParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/fsx-mount-name
+      Type: String
+      Value: !GetAtt FsxLustreFileSystem.LustreMountName
+      Description: FSx for Lustre mount name
+
+  FsxFileSystemIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/fsx-file-system-id
+      Type: String
+      Value: !Ref FsxLustreFileSystem
+      Description: FSx for Lustre file system ID
+
+  KmsKeyArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/kms-key-arn
+      Type: String
+      Value: !GetAtt StorageKmsKey.Arn
+      Description: KMS key ARN for storage encryption
+
+  FsxSecurityGroupIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/fsx-security-group-id
+      Type: String
+      Value: !Ref FsxSecurityGroup
+      Description: FSx security group ID
+
+Conditions:
+  HasDataRepository: !Not [!Equals [!Ref DataRepositoryPath, ""]]
+  IsPersistent: !Or
+    - !Equals [!Ref FsxDeploymentType, "PERSISTENT_1"]
+    - !Equals [!Ref FsxDeploymentType, "PERSISTENT_2"]
+
+Outputs:
+  FsxFileSystemId:
+    Description: FSx for Lustre file system ID
+    Value: !Ref FsxLustreFileSystem
+
+  FsxDnsName:
+    Description: FSx for Lustre DNS name
+    Value: !GetAtt FsxLustreFileSystem.DNSName
+
+  FsxMountName:
+    Description: FSx for Lustre mount name
+    Value: !GetAtt FsxLustreFileSystem.LustreMountName
+
+  FsxSecurityGroupId:
+    Description: FSx security group ID
+    Value: !Ref FsxSecurityGroup
+
+  KmsKeyArn:
+    Description: Storage KMS key ARN
+    Value: !GetAtt StorageKmsKey.Arn
+
+  KmsKeyId:
+    Description: Storage KMS key ID
+    Value: !Ref StorageKmsKey
+
+  # Mount command for documentation
+  FsxMountCommand:
+    Description: Command to mount FSx on nodes
+    Value: !Sub |
+      mount -t lustre ${FsxLustreFileSystem.DNSName}@tcp:/${FsxLustreFileSystem.LustreMountName} /mnt/fsx
+

@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Shared NTH infrastructure for EventBridge rules'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Environment name (e.g., accel-usw2)
+
+Resources:
+  # EventBridge rules target all cluster queues via pattern matching
+  SpotInterruptionRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${Environment}-nth-spot-interruption"
+      EventPattern:
+        source: ["aws.ec2"]
+        detail-type: ["EC2 Spot Instance Interruption Warning"]
+      Targets:
+        - Arn: !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:nth-*"
+          Id: "SpotInterruptionTarget"
+          SqsParameters:
+            MessageGroupId: "spot-interruption"
+
+  ScheduledMaintenanceRule:
+    Type: AWS::Events::Rule  
+    Properties:
+      Name: !Sub "${Environment}-nth-scheduled-maintenance"
+      EventPattern:
+        source: ["aws.health"]
+        detail-type: ["AWS Health Event"]
+      Targets:
+        - Arn: !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:nth-*"
+          Id: "MaintenanceTarget"
+
+  RebalanceRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${Environment}-nth-rebalance"
+      EventPattern:
+        source: ["aws.ec2"]
+        detail-type: ["EC2 Instance Rebalance Recommendation"]
+      Targets:
+        - Arn: !Sub "arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:nth-*"
+          Id: "RebalanceTarget"
+
+Outputs:
+  SpotInterruptionRuleArn:
+    Value: !GetAtt SpotInterruptionRule.Arn
+  ScheduledMaintenanceRuleArn:
+    Value: !GetAtt ScheduledMaintenanceRule.Arn
+  RebalanceRuleArn:
+    Value: !GetAtt RebalanceRule.Arn

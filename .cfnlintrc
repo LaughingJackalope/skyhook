@@ -1,0 +1,9 @@
+regions:
+  - us-west-2
+template_extensions:
+  - yaml
+  - yml
+  - json
+ignore_bad_template_errors: true
+include_experimental: false
+

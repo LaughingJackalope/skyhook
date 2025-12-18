@@ -1,0 +1,64 @@
+# Platform Namespaces
+# Applied first to ensure all target namespaces exist
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: logging
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hpc-system
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cost
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: karpenter
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kyverno
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keda
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-dns
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: k8sgpt-operator-system
+  labels:
+    skyhook.io/component: k8sgpt
+    skyhook.io/tier: incubating
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: docs
+  labels:
+    skyhook.io/component: docs
+    skyhook.io/tier: platform
+

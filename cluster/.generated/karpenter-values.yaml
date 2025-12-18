@@ -1,0 +1,8 @@
+settings:
+  clusterName: skyhook-accel-usw2-v69
+  clusterEndpoint: https://CED8BDE08928B3022DD66ED688C59802.gr7.us-west-2.eks.amazonaws.com
+serviceAccount:
+  create: true
+  name: karpenter
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::751442549699:role/skyhook-accel-usw2-v69-karpenter

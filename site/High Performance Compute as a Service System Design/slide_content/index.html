@@ -1,0 +1,1927 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="High-Performance Compute-as-a-Service for ML Research" name="description"/>
+<link href="http://docs.skyhook.internal/High%20Performance%20Compute%20as%20a%20Service%20System%20Design/slide_content/" rel="canonical"/>
+<link href="../../assets/images/favicon.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.0" name="generator"/>
+<title>High-Performance Compute-as-a-Service Architecture - Skyhook</title>
+<link href="../../assets/stylesheets/main.618322db.min.css" rel="stylesheet"/>
+<link href="../../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="deep-purple" data-md-color-primary="indigo" data-md-color-scheme="default" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#high-performance-compute-as-a-service-architecture">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<header class="md-header" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="Skyhook" class="md-header__button md-logo" data-md-component="logo" href="../.." title="Skyhook">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            Skyhook
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              High-Performance Compute-as-a-Service Architecture
+            
+          </span>
+</div>
+</div>
+</div>
+<form class="md-header__option" data-md-component="palette">
+<input aria-label="Switch to dark mode" class="md-option" data-md-color-accent="deep-purple" data-md-color-media="" data-md-color-primary="indigo" data-md-color-scheme="default" id="__palette_0" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_1" hidden="" title="Switch to dark mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+<input aria-label="Switch to light mode" class="md-option" data-md-color-accent="deep-purple" data-md-color-media="" data-md-color-primary="indigo" data-md-color-scheme="slate" id="__palette_1" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_0" hidden="" title="Switch to light mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+</form>
+<script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+<div class="md-search__suggest" data-md-component="search-suggest"></div>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/your-org/skyhook" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    Skyhook
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<nav aria-label="Tabs" class="md-tabs" data-md-component="tabs">
+<div class="md-grid">
+<ul class="md-tabs__list">
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../..">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../../platform/overview/">
+          
+  
+  
+  Platform
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../../guides/quick-start/">
+          
+  
+  
+  Guides
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../../reference/instance-types/">
+          
+  
+  
+  Reference
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../../internal/">
+          
+  
+  
+  Internal
+
+        </a>
+</li>
+</ul>
+</div>
+</nav>
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary md-nav--lifted" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="Skyhook" class="md-nav__button md-logo" data-md-component="logo" href="../.." title="Skyhook">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"></path></svg>
+</a>
+    Skyhook
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/your-org/skyhook" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</div>
+<div class="md-source__repository">
+    Skyhook
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_2" type="checkbox"/>
+<label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Platform
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_2_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_2">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Platform
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../platform/overview/">
+<span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../platform/capabilities/">
+<span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../platform/architecture/">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../platform/limits/">
+<span class="md-ellipsis">
+    
+  
+    Limits &amp; Quotas
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_3" type="checkbox"/>
+<label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_3_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_3">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/quick-start/">
+<span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/checkpointing/">
+<span class="md-ellipsis">
+    
+  
+    Checkpointing
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/multi-node/">
+<span class="md-ellipsis">
+    
+  
+    Multi-Node Training
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../guides/debugging/">
+<span class="md-ellipsis">
+    
+  
+    Debugging
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_4" type="checkbox"/>
+<label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_4_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_4">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/instance-types/">
+<span class="md-ellipsis">
+    
+  
+    Instance Types
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/storage/">
+<span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../reference/environment/">
+<span class="md-ellipsis">
+    
+  
+    Environment Variables
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_5" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Internal
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_5_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_5">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Internal
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/">
+<span class="md-ellipsis">
+    
+  
+    Internal Documentation
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_5_2" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_5_2_label" class="md-nav" data-md-level="2">
+<label class="md-nav__title" for="__nav_5_2">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Design
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/design/">
+<span class="md-ellipsis">
+    
+  
+    Design Documentation
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/design/architecture-notes/">
+<span class="md-ellipsis">
+    
+  
+    Architecture Notes
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/design/implementation-plan/">
+<span class="md-ellipsis">
+    
+  
+    Implementation Plan
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/design/slide-content/">
+<span class="md-ellipsis">
+    
+  
+    Slide Content
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_5_3" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5_3" id="__nav_5_3_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_5_3_label" class="md-nav" data-md-level="2">
+<label class="md-nav__title" for="__nav_5_3">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Runbooks
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/runbooks/">
+<span class="md-ellipsis">
+    
+  
+    Runbooks
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/runbooks/spot-recovery/">
+<span class="md-ellipsis">
+    
+  
+    Spot Recovery
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/runbooks/degraded-mode/">
+<span class="md-ellipsis">
+    
+  
+    Degraded Mode
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/runbooks/tenant-onboarding/">
+<span class="md-ellipsis">
+    
+  
+    Tenant Onboarding
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_5_4" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5_4" id="__nav_5_4_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    ADRs
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_5_4_label" class="md-nav" data-md-level="2">
+<label class="md-nav__title" for="__nav_5_4">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    ADRs
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/adrs/">
+<span class="md-ellipsis">
+    
+  
+    Architecture Decision Records
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/adrs/001-fsx-over-s3/">
+<span class="md-ellipsis">
+    
+  
+    ADR-001 FSx over S3
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/adrs/002-kyverno-policies/">
+<span class="md-ellipsis">
+    
+  
+    ADR-002 Kyverno Policies
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/adrs/003-soci-image-loading/">
+<span class="md-ellipsis">
+    
+  
+    ADR-003 SOCI Image Loading
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_5_5" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5_5" id="__nav_5_5_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Component Reference
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_5_5_label" class="md-nav" data-md-level="2">
+<label class="md-nav__title" for="__nav_5_5">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Component Reference
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/component-reference/">
+<span class="md-ellipsis">
+    
+  
+    Component Reference
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/component-reference/skypilot-infra/">
+<span class="md-ellipsis">
+    
+  
+    SkyPilot Infra
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/component-reference/platform-base/">
+<span class="md-ellipsis">
+    
+  
+    Platform Base
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../../internal/component-reference/control-plane/">
+<span class="md-ellipsis">
+    
+  
+    Control Plane
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#skypilot-on-eks-bridging-cloud-native-and-hpc-for-optimal-researcher-experience">
+<span class="md-ellipsis">
+      
+        SkyPilot on EKS: Bridging Cloud-Native and HPC for Optimal Researcher Experience
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-1-title-slide">
+<span class="md-ellipsis">
+      
+        Slide 1: Title Slide
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-2-the-challenge-bridging-the-abstraction-gap">
+<span class="md-ellipsis">
+      
+        Slide 2: The Challenge - Bridging the Abstraction Gap
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-3-storage-architecture-the-storage-trilemma">
+<span class="md-ellipsis">
+      
+        Slide 3: Storage Architecture - The Storage Trilemma
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-4-storage-data-flow-from-s3-to-gpu">
+<span class="md-ellipsis">
+      
+        Slide 4: Storage Data Flow - From S3 to GPU
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-5-high-performance-networking-efa-and-os-bypass">
+<span class="md-ellipsis">
+      
+        Slide 5: High-Performance Networking - EFA and OS-Bypass
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-6-automated-configuration-kyverno-policy-engine">
+<span class="md-ellipsis">
+      
+        Slide 6: Automated Configuration - Kyverno Policy Engine
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-7-cluster-placement-groups-minimizing-physical-latency">
+<span class="md-ellipsis">
+      
+        Slide 7: Cluster Placement Groups - Minimizing Physical Latency
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-8-observability-user-centric-logging-with-fluent-bit">
+<span class="md-ellipsis">
+      
+        Slide 8: Observability - User-Centric Logging with Fluent Bit
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-9-image-vending-soci-lazy-loading">
+<span class="md-ellipsis">
+      
+        Slide 9: Image Vending - SOCI Lazy Loading
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-10-failure-handling-graceful-spot-interruption-recovery">
+<span class="md-ellipsis">
+      
+        Slide 10: Failure Handling - Graceful Spot Interruption Recovery
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-11-karpenter-provisioning-automated-node-configuration">
+<span class="md-ellipsis">
+      
+        Slide 11: Karpenter Provisioning - Automated Node Configuration
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-12-decision-matrix-ranked-architectural-choices">
+<span class="md-ellipsis">
+      
+        Slide 12: Decision Matrix - Ranked Architectural Choices
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#slide-13-hardening-fallback-plan-gaps-to-close">
+<span class="md-ellipsis">
+      
+        Slide 13: Hardening &amp; Fallback Plan (Gaps to Close)
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="high-performance-compute-as-a-service-architecture">High-Performance Compute-as-a-Service Architecture<a class="headerlink" href="#high-performance-compute-as-a-service-architecture" title="Permanent link">¶</a></h1>
+<h2 id="skypilot-on-eks-bridging-cloud-native-and-hpc-for-optimal-researcher-experience">SkyPilot on EKS: Bridging Cloud-Native and HPC for Optimal Researcher Experience<a class="headerlink" href="#skypilot-on-eks-bridging-cloud-native-and-hpc-for-optimal-researcher-experience" title="Permanent link">¶</a></h2>
+<hr/>
+<h2 id="slide-1-title-slide">Slide 1: Title Slide<a class="headerlink" href="#slide-1-title-slide" title="Permanent link">¶</a></h2>
+<p><strong>High-Performance Compute-as-a-Service Architecture</strong></p>
+<p><strong>SkyPilot on EKS: Technology Stack for Maximum Researcher Experience</strong></p>
+<p>Architectural Decisions and Requirements for HPC Research Platforms</p>
+<hr/>
+<h2 id="slide-2-the-challenge-bridging-the-abstraction-gap">Slide 2: The Challenge - Bridging the Abstraction Gap<a class="headerlink" href="#slide-2-the-challenge-bridging-the-abstraction-gap" title="Permanent link">¶</a></h2>
+<p><strong>Standard Kubernetes Patterns Are Insufficient for Deep Learning Workloads</strong></p>
+<p>The fundamental challenge in building a Compute-as-a-Service platform lies in bridging the "gap of abstraction" between general-purpose Kubernetes constructs and the rigorous demands of high-performance computing. Standard Kubernetes prioritizes resilience and availability over raw throughput and latency—a prioritization that must be inverted for HPC workloads.</p>
+<p><strong>Key Mismatches:</strong>
+- <strong>TCP networking</strong> is insufficient for LLM training synchronization requirements (NCCL collective operations)
+- <strong>Standard EBS volumes</strong> introduce I/O wait times that starve expensive GPUs of data
+- <strong>Default container image pulls</strong> create 5-10 minute startup delays that destroy interactivity
+- <strong>Generic logging</strong> makes debugging difficult when researchers need to track jobs across pod restarts
+- <strong>Blind failure handling</strong> wastes compute hours when spot instances are reclaimed</p>
+<p><strong>Researcher Experience (RX) Definition:</strong> Minimization of infrastructure friction—latency in job startup, complexity in data access, and opacity in failure recovery—while maximizing computational throughput and cost-efficiency.</p>
+<div class="mermaid">graph TB
+    subgraph "Researcher Interface"
+        R[Researcher]
+        SP[SkyPilot<br/>Abstraction Layer]
+    end
+
+    subgraph "AWS Cloud Infrastructure"
+        subgraph "Amazon EKS Cluster"
+            K8S[Kubernetes API<br/>Control Plane]
+            KARP[Karpenter<br/>Auto-provisioner]
+
+            subgraph "Worker Nodes"
+                N1[GPU Node 1<br/>p5.48xlarge]
+                N2[GPU Node 2<br/>p4d.24xlarge]
+                N3[GPU Node N<br/>...]
+            end
+
+            subgraph "Supporting Services"
+                VPC[VPC CNI<br/>+ EFA Plugin]
+                FB[Fluent Bit<br/>Logging]
+                KYV[Kyverno<br/>Policy Engine]
+            end
+        end
+
+        subgraph "Storage Layer"
+            S3[Amazon S3<br/>Object Storage]
+            FSX[FSx for Lustre<br/>Parallel File System]
+            NVM[NVMe Instance<br/>Stores RAID0]
+        end
+
+        subgraph "Networking"
+            EFA[EFA Interfaces<br/>OS-bypass]
+            CPG[Cluster Placement<br/>Groups]
+        end
+
+        subgraph "Observability"
+            CW[CloudWatch Logs<br/>Task-based Streams]
+            S3L[S3 Archive<br/>Black Box Logs]
+        end
+    end
+
+    R --&gt;|Submit Jobs| SP
+    SP --&gt;|Task Definition| K8S
+    K8S --&gt;|Provision Request| KARP
+    KARP --&gt;|Launch Instances| N1
+    KARP --&gt;|Launch Instances| N2
+    KARP --&gt;|Launch Instances| N3
+
+    K8S --&gt; VPC
+    K8S --&gt; KYV
+
+    N1 --&gt; NVM
+    N2 --&gt; NVM
+    N3 --&gt; NVM
+
+    FSX &lt;--&gt;|Lazy Load| S3
+    N1 &lt;--&gt;|Mount| FSX
+    N2 &lt;--&gt;|Mount| FSX
+    N3 &lt;--&gt;|Mount| FSX
+
+    N1 -.-&gt;|Attached| EFA
+    N2 -.-&gt;|Attached| EFA
+    N3 -.-&gt;|Attached| EFA
+
+    EFA -.-&gt;|Physical Proximity| CPG
+
+    N1 --&gt;|Logs| FB
+    N2 --&gt;|Logs| FB
+    N3 --&gt;|Logs| FB
+
+    FB --&gt;|Task-tagged| CW
+    FB --&gt;|Backup| S3L
+
+    KYV -.-&gt;|Auto-inject<br/>EFA env vars| N1
+    KYV -.-&gt;|Auto-inject<br/>EFA env vars| N2
+    KYV -.-&gt;|Auto-inject<br/>EFA env vars| N3
+
+    style SP fill:#4A90E2
+    style KARP fill:#E27D60
+    style FSX fill:#85C88A
+    style EFA fill:#F4A261
+    style KYV fill:#9B59B6
+</div>
+<hr/>
+<h2 id="slide-3-storage-architecture-the-storage-trilemma">Slide 3: Storage Architecture - The Storage Trilemma<a class="headerlink" href="#slide-3-storage-architecture-the-storage-trilemma" title="Permanent link">¶</a></h2>
+<p><strong>FSx for Lustre + NVMe RAID0 Provides Full POSIX Compliance with 1200 Gbps Throughput</strong></p>
+<p>The storage subsystem is the gravamen of any ML platform. The architectural decision involves complex trade-offs between POSIX compliance, throughput performance, cost, and operational complexity. Three primary options exist, each with distinct performance profiles.</p>
+<p><strong>Storage Options Comparison:</strong></p>
+<p><strong>Mountpoint for S3 (The "Easy Way"):</strong>
+- Cost-effective with only S3 request/storage costs
+- Optimized for sequential reads, can saturate 100 Gbps links
+- <strong>Critical Limitation:</strong> Lacks full POSIX support—fails with random writes, file locking, directory renaming
+- Metadata operations (listing millions of files) are orders of magnitude slower than metadata-optimized systems
+- Creates "leaky abstraction" forcing researchers to modify code for storage limitations</p>
+<p><strong>FSx for Lustre (The "High-Performance Way"):</strong>
+- Fully managed parallel file system with native S3 integration
+- Stripes data across multiple storage servers for parallel I/O streams
+- <strong>Scratch deployment type</strong> acts as high-speed cache for S3 data with lazy loading
+- When coupled with EFA, achieves <strong>1200 Gbps throughput</strong> using Scalable Reliable Datagram (SRD) protocol
+- Full POSIX compliance supports file locking, partial writes, atomic renames
+- Benchmarks show 4–15x faster than standard S3 clients depending on file size and concurrency</p>
+<p><strong>NVMe Instance Stores:</strong>
+- Ephemeral, physically attached storage (e.g., p5 instances have terabytes of NVMe)
+- Provides millions of IOPS with microsecond latency
+- Ideal for caching layers and temporary processing that exceeds RAM
+- <strong>Must be formatted and mounted at boot</strong> via Karpenter automation or remains unutilized</p>
+<p><strong>Recommended Architecture:</strong> FSx for Lustre Scratch + automated NVMe RAID0 for local caching and checkpoint acceleration.</p>
+<div class="mermaid">graph TD
+    START[Storage Decision<br/>for ML Workloads]
+
+    START --&gt; Q1{POSIX<br/>Compliance<br/>Required?}
+
+    Q1 --&gt;|No<br/>Read-only<br/>Inference| MP[Mountpoint for S3]
+    Q1 --&gt;|Yes<br/>Training with<br/>Checkpoints| Q2{Performance<br/>Requirements?}
+
+    Q2 --&gt;|Basic<br/>Single Node| EBS[EBS Volumes<br/>gp3/io2]
+    Q2 --&gt;|High Performance<br/>Multi-node| FSX_DECISION[FSx for Lustre]
+
+    FSX_DECISION --&gt; FSX_TYPE{Deployment<br/>Type?}
+
+    FSX_TYPE --&gt;|Temporary<br/>Processing| SCRATCH[Scratch FS<br/>S3-linked Cache]
+    FSX_TYPE --&gt;|Long-term<br/>Persistent| PERSISTENT[Persistent FS<br/>Full Copy]
+
+    SCRATCH --&gt; NVME_Q{Local NVMe<br/>Available?}
+    PERSISTENT --&gt; NVME_Q
+    EBS --&gt; NVME_Q
+
+    NVME_Q --&gt;|Yes| RAID[NVMe RAID0<br/>Local Cache]
+    NVME_Q --&gt;|No| SKIP[Skip Local<br/>Optimization]
+
+    MP --&gt; MP_CHAR[✓ Cost: Lowest<br/>✓ Setup: Easiest<br/>✗ POSIX: Limited<br/>✗ Metadata: Slow]
+
+    EBS --&gt; EBS_CHAR[✓ POSIX: Full<br/>✓ Persistent: Yes<br/>✗ Throughput: Limited<br/>✗ Cost: High at scale]
+
+    SCRATCH --&gt; FSX_CHAR[✓ POSIX: Full<br/>✓ Throughput: 1200 Gbps<br/>✓ S3 Integration: Native<br/>✓ Cost: Pay for cache only]
+
+    RAID --&gt; RAID_CHAR[✓ IOPS: Millions<br/>✓ Latency: Microseconds<br/>✓ Cost: Free ephemeral<br/>✗ Persistence: None]
+
+    SKIP --&gt; END[Storage Architecture<br/>Complete]
+    RAID_CHAR --&gt; END
+    MP_CHAR --&gt; END
+    EBS_CHAR --&gt; END
+    FSX_CHAR --&gt; END
+
+    style START fill:#4A90E2
+    style SCRATCH fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style RAID fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style FSX_CHAR fill:#D4EDDA
+    style RAID_CHAR fill:#D4EDDA
+    style MP_CHAR fill:#F8D7DA
+    style EBS_CHAR fill:#FFF3CD
+</div>
+<hr/>
+<h2 id="slide-4-storage-data-flow-from-s3-to-gpu">Slide 4: Storage Data Flow - From S3 to GPU<a class="headerlink" href="#slide-4-storage-data-flow-from-s3-to-gpu" title="Permanent link">¶</a></h2>
+<p><strong>FSx Lazy-Loading with NVMe Caching Eliminates I/O Bottlenecks</strong></p>
+<p>The high-performance storage architecture creates a multi-tier caching hierarchy that transparently accelerates data access while maintaining S3 as the source of truth. This design eliminates I/O bottlenecks that would otherwise starve expensive GPUs.</p>
+<p><strong>Data Flow Mechanics:</strong></p>
+<p><strong>Initial Access (Lazy Loading):</strong>
+- FSx for Lustre is linked to S3 bucket containing training datasets
+- On first file access, FSx lazy-loads data from S3 into high-performance Object Storage Targets (OSTs)
+- Metadata servers (MDTs) coordinate parallel I/O streams across multiple OSTs
+- Data flows at <strong>1200 Gbps</strong> via EFA using Scalable Reliable Datagram (SRD) protocol</p>
+<p><strong>Active Training:</strong>
+- Training pods mount FSx at <code>/mnt/data</code> as standard POSIX filesystem
+- Local page cache in RAM buffers frequently accessed data
+- NVMe RAID0 at <code>/mnt/local-scratch</code> provides overflow cache and temporary workspace
+- Checkpoint writes use <strong>MOUNT_CACHED mode</strong>: write to local NVMe at gigabytes/second, async upload to S3</p>
+<p><strong>Checkpoint Persistence:</strong>
+- Background processes asynchronously upload modified data back to S3 via data repository tasks
+- Training loop continues without blocking on S3 write latency
+- Reduces "checkpoint tax" (GPU idle time) by nearly 10x compared to direct S3 writes</p>
+<p><strong>Performance Impact:</strong> This architecture transforms storage from a bottleneck into a transparent accelerator, enabling researchers to use standard file operations without refactoring for object storage idiosyncrasies.</p>
+<div class="mermaid">graph LR
+    subgraph "Object Storage"
+        S3[(Amazon S3<br/>Training Data<br/>Checkpoints)]
+    end
+
+    subgraph "FSx for Lustre Scratch"
+        FSX_META[Metadata Servers<br/>MDT]
+        FSX_DATA[Object Storage<br/>Targets OST]
+        FSX_META -.-&gt;|Coordinates| FSX_DATA
+    end
+
+    subgraph "GPU Instance p5.48xlarge"
+        direction TB
+        POD[Training Pod<br/>PyTorch/JAX]
+
+        subgraph "File System Layers"
+            MOUNT[/mnt/data<br/>FSx Mount Point]
+            CACHE[Local Page Cache<br/>RAM Buffer]
+        end
+
+        subgraph "Local NVMe RAID0"
+            NVME[/mnt/local-scratch<br/>8x 1TB NVMe<br/>Striped RAID0]
+        end
+
+        POD --&gt;|Read Dataset| MOUNT
+        POD --&gt;|Write Checkpoint| MOUNT
+        POD --&gt;|Temp Files| NVME
+
+        MOUNT &lt;--&gt;|Cache Hit/Miss| CACHE
+    end
+
+    S3 &lt;--&gt;|Lazy Load<br/>on First Access| FSX_DATA
+    S3 &lt;-.-&gt;|Export Changed<br/>via Data Repo Task| FSX_DATA
+
+    FSX_DATA &lt;--&gt;|1200 Gbps<br/>via EFA + SRD| MOUNT
+    FSX_META &lt;--&gt;|Metadata Ops| MOUNT
+
+    CACHE -.-&gt;|Overflow| NVME
+
+    MOUNT -.-&gt;|MOUNT_CACHED<br/>Async Upload| S3
+
+    classDef storage fill:#85C88A
+    classDef compute fill:#4A90E2
+    classDef cache fill:#F4A261
+
+    class S3,FSX_META,FSX_DATA storage
+    class POD compute
+    class CACHE,NVME cache
+</div>
+<hr/>
+<h2 id="slide-5-high-performance-networking-efa-and-os-bypass">Slide 5: High-Performance Networking - EFA and OS-Bypass<a class="headerlink" href="#slide-5-high-performance-networking-efa-and-os-bypass" title="Permanent link">¶</a></h2>
+<p><strong>Elastic Fabric Adapter Reduces Multi-Node Training Latency by 10x Through Kernel Bypass</strong></p>
+<p>In distributed deep learning, the network becomes the backplane of the computer. The efficiency of All-Reduce operations—where every GPU synchronizes gradients with every other GPU—is dominated by network latency. Standard TCP networking introduces "bubble time" where expensive GPUs sit idle waiting for packets.</p>
+<p><strong>EFA Architecture and Benefits:</strong></p>
+<p><strong>Scalable Reliable Datagram (SRD) Protocol:</strong>
+- Unlike TCP's strict packet ordering (causing head-of-line blocking), SRD sprays packets across all available network paths (ECMP)
+- Reorders packets at receiver, recovering from link failures in microseconds
+- Utilizes full bisection bandwidth of AWS network fabric</p>
+<p><strong>OS-Bypass Mechanism:</strong>
+- Traditional TCP path: Application → Kernel TCP/IP stack → Context switches → NIC
+- EFA path: Application → libfabric → EFA provider → <strong>Direct hardware access</strong> → Network
+- Eliminates kernel overhead and enables RDMA (Remote Direct Memory Access) operations
+- Zero-copy data transfer directly from GPU memory to network interface</p>
+<p><strong>Performance Impact:</strong>
+- Each EFA interface provides <strong>400 Gbps</strong> throughput (p5.48xlarge has multiple EFAs)
+- Critical for NCCL collective operations in multi-node LLM training
+- Without EFA, jobs silently fall back to TCP running <strong>10x slower</strong> than possible</p>
+<p><strong>Integration Challenge:</strong> Hardware capability is useless if software is unaware. NCCL requires specific environment variables (<code>FI_PROVIDER=efa</code>, <code>FI_EFA_USE_DEVICE_RDMA=1</code>) to utilize EFA. Relying on researchers to set these creates silent performance regression.</p>
+<p><strong>Solution:</strong> Automated configuration via Kyverno policies (covered in next slide).</p>
+<div class="mermaid">graph TB
+    subgraph "Application Layer"
+        APP[Training Code<br/>PyTorch DDP]
+    end
+
+    subgraph "Communication Library"
+        NCCL[NCCL<br/>Collective Operations<br/>All-Reduce, All-Gather]
+    end
+
+    subgraph "Fabric Interface"
+        LIBFABRIC[libfabric<br/>Fabric Abstraction]
+        EFA_PROVIDER[EFA Provider<br/>FI_PROVIDER=efa]
+    end
+
+    subgraph "Network Stack Comparison"
+        direction LR
+
+        subgraph "Traditional TCP Path"
+            TCP[TCP/IP Stack]
+            KERNEL[Kernel Space<br/>Context Switches]
+            NIC_TCP[Standard NIC]
+        end
+
+        subgraph "EFA OS-Bypass Path"
+            SRD[SRD Protocol<br/>Scalable Reliable<br/>Datagram]
+            RDMA[RDMA Operations<br/>Direct Memory Access]
+            EFA_HW[EFA Hardware<br/>Network Interface]
+        end
+    end
+
+    subgraph "Physical Network"
+        AWS_NET[AWS Network Fabric<br/>ECMP Multi-path<br/>400 Gbps per EFA]
+    end
+
+    APP --&gt;|Gradient Sync| NCCL
+    NCCL --&gt;|Transport| LIBFABRIC
+    LIBFABRIC --&gt; EFA_PROVIDER
+
+    EFA_PROVIDER -.-&gt;|Legacy Fallback<br/>10x Slower| TCP
+    EFA_PROVIDER --&gt;|High Performance| SRD
+
+    TCP --&gt; KERNEL
+    KERNEL --&gt; NIC_TCP
+    NIC_TCP --&gt; AWS_NET
+
+    SRD --&gt; RDMA
+    RDMA --&gt;|Zero-copy<br/>Bypass Kernel| EFA_HW
+    EFA_HW --&gt;|Direct Access| AWS_NET
+
+    style SRD fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style RDMA fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style EFA_HW fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+
+    style TCP fill:#F8D7DA
+    style KERNEL fill:#F8D7DA
+    style NIC_TCP fill:#F8D7DA
+
+    style NCCL fill:#4A90E2
+    style APP fill:#4A90E2
+</div>
+<hr/>
+<h2 id="slide-6-automated-configuration-kyverno-policy-engine">Slide 6: Automated Configuration - Kyverno Policy Engine<a class="headerlink" href="#slide-6-automated-configuration-kyverno-policy-engine" title="Permanent link">¶</a></h2>
+<p><strong>Kyverno Policies Prevent Silent Performance Degradation by Auto-Injecting EFA Configuration</strong></p>
+<p>The "High-Performance Way" decouples infrastructure complexity from user job definitions. Kyverno, a Kubernetes-native policy engine, automatically mutates pod specifications at admission time to inject required environment variables for EFA-enabled workloads.</p>
+<p><strong>The Silent Degradation Problem:</strong>
+- Researchers submit jobs requesting EFA resources (<code>vpc.amazonaws.com/efa: 4</code>)
+- Without proper environment variables, NCCL falls back to standard TCP networking
+- Jobs run successfully but <strong>10x slower than possible</strong> with no error messages
+- Researchers waste compute hours without realizing the performance loss</p>
+<p><strong>Kyverno Solution - Policy-as-Code:</strong></p>
+<p><strong>Policy Logic:</strong>
+1. <strong>Match Condition:</strong> Watch for any pod requesting <code>vpc.amazonaws.com/efa</code> resource
+2. <strong>Precondition Check:</strong> Verify EFA resource limit is set (not empty)
+3. <strong>Mutation Action:</strong> Automatically inject environment variables into all containers</p>
+<p><strong>Injected Environment Variables:</strong>
+- <code>FI_PROVIDER=efa</code> - Directs libfabric to use EFA provider
+- <code>FI_EFA_USE_DEVICE_RDMA=1</code> - Enables RDMA operations
+- <code>NCCL_DEBUG=INFO</code> - Provides visibility into NCCL transport selection
+- <code>NCCL_PROTO=simple</code> - Optimizes protocol for EFA characteristics</p>
+<p><strong>Researcher Experience Impact:</strong>
+- Researchers define resource requirements, not infrastructure details
+- Platform guarantees optimal configuration automatically
+- Eliminates entire class of performance bugs
+- Maintains abstraction: users think about "I need EFA" not "I need to export FI_PROVIDER"</p>
+<div class="mermaid">graph TB
+    subgraph "Pod Creation Flow"
+        USER[SkyPilot Task<br/>Requests EFA]
+        POD_SPEC[Pod Specification<br/>resources.limits:<br/>vpc.amazonaws.com/efa: 4]
+    end
+
+    subgraph "Kubernetes Admission Control"
+        API[API Server<br/>Admission Webhooks]
+        KYVERNO[Kyverno Policy Engine<br/>ClusterPolicy]
+    end
+
+    subgraph "Policy Evaluation"
+        MATCH{Match<br/>Condition?}
+        PRECOND{Has EFA<br/>Resource<br/>Limit?}
+        MUTATE[Mutation Rule<br/>Inject Environment]
+    end
+
+    subgraph "Injected Configuration"
+        ENV[Environment Variables:<br/>FI_PROVIDER=efa<br/>FI_EFA_USE_DEVICE_RDMA=1<br/>NCCL_DEBUG=INFO<br/>NCCL_PROTO=simple]
+    end
+
+    subgraph "Final Pod"
+        FINAL[Pod with Auto-config<br/>✓ EFA Resources<br/>✓ Environment Variables<br/>✓ Ready for NCCL]
+    end
+
+    USER --&gt; POD_SPEC
+    POD_SPEC --&gt; API
+    API --&gt; KYVERNO
+
+    KYVERNO --&gt; MATCH
+    MATCH --&gt;|Pod Resource| PRECOND
+    PRECOND --&gt;|Yes| MUTATE
+    PRECOND --&gt;|No| SKIP[Skip Mutation]
+
+    MUTATE --&gt; ENV
+    ENV --&gt; FINAL
+    SKIP --&gt; FINAL
+
+    FINAL --&gt; SCHEDULER[Kubernetes Scheduler<br/>Places on EFA-enabled Node]
+
+    Note1[Problem Solved:<br/>Researchers don't need to<br/>remember EFA configuration]
+    Note2[Prevents Silent Degradation:<br/>Without env vars, NCCL falls<br/>back to TCP 10x slower]
+
+    style MUTATE fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style ENV fill:#D4EDDA
+    style FINAL fill:#4A90E2
+    style Note1 fill:#FFF3CD
+    style Note2 fill:#F8D7DA
+</div>
+<hr/>
+<h2 id="slide-7-cluster-placement-groups-minimizing-physical-latency">Slide 7: Cluster Placement Groups - Minimizing Physical Latency<a class="headerlink" href="#slide-7-cluster-placement-groups-minimizing-physical-latency" title="Permanent link">¶</a></h2>
+<p><strong>Placement Groups Reduce Network Latency from 100-500μs to 10-20μs Through Physical Proximity</strong></p>
+<p>While EFA optimizes the network protocol, Cluster Placement Groups optimize the physics. They ensure instances are physically located in the same rack or adjacent racks within an Availability Zone, minimizing speed-of-light latency and maximizing bisection bandwidth.</p>
+<p><strong>Physical Topology Benefits:</strong></p>
+<p><strong>Within Placement Group:</strong>
+- Instances provisioned in same or adjacent racks
+- Connected via high-bandwidth Top-of-Rack (ToR) switches
+- Network latency: <strong>10-20 microseconds</strong>
+- Full bisection bandwidth available for multi-node communication
+- Critical for 512+ GPU training jobs where network becomes the bottleneck</p>
+<p><strong>Without Placement Group (Scattered):</strong>
+- Instances may be in different buildings or data halls
+- Traffic traverses multiple spine switches
+- Network latency: <strong>100-500 microseconds</strong> (5-25x higher)
+- Reduced effective bandwidth due to contention
+- GPU utilization drops from 90% to 60-70% due to synchronization delays</p>
+<p><strong>Karpenter Integration Challenge:</strong>
+- Karpenter v1.0+ lacks native field for dynamic placement group creation per job
+- Significant gap compared to traditional HPC schedulers like Slurm</p>
+<p><strong>High-Performance Workaround:</strong>
+1. <strong>Pre-provision</strong> static Cluster Placement Groups (e.g., <code>ml-cluster-group-a</code>, <code>ml-cluster-group-b</code>)
+2. <strong>Launch Template</strong> specifies placement configuration pointing to these groups
+3. <strong>EC2NodeClass</strong> references the Launch Template via <code>launchTemplateName</code>
+4. <strong>Capacity Blocks for ML</strong> (512 H100 reservations) inherently include placement groups</p>
+<p><strong>Performance Impact:</strong> For large-scale multi-node LLM training, proper placement is the difference between 90% GPU utilization and 60-70% utilization—directly affecting cost-efficiency and training time.</p>
+<div class="mermaid">graph TB
+    subgraph "AWS Availability Zone"
+        subgraph "Cluster Placement Group A"
+            direction LR
+
+            subgraph "Rack 1"
+                N1[Node 1<br/>p5.48xlarge<br/>8x H100]
+                N2[Node 2<br/>p5.48xlarge<br/>8x H100]
+            end
+
+            subgraph "Rack 2 - Adjacent"
+                N3[Node 3<br/>p5.48xlarge<br/>8x H100]
+                N4[Node 4<br/>p5.48xlarge<br/>8x H100]
+            end
+
+            TOR1[Top-of-Rack<br/>Switch 1]
+            TOR2[Top-of-Rack<br/>Switch 2]
+
+            N1 -.-&gt;|EFA 400Gbps| TOR1
+            N2 -.-&gt;|EFA 400Gbps| TOR1
+            N3 -.-&gt;|EFA 400Gbps| TOR2
+            N4 -.-&gt;|EFA 400Gbps| TOR2
+        end
+
+        SPINE[Spine Switch<br/>High-bandwidth<br/>Interconnect]
+
+        TOR1 &lt;-.-&gt;|Full Bisection<br/>Bandwidth| SPINE
+        TOR2 &lt;-.-&gt;|Full Bisection<br/>Bandwidth| SPINE
+
+        subgraph "Standard Placement - Scattered"
+            NS1[Node S1<br/>Different Rack]
+            NS2[Node S2<br/>Different Building]
+        end
+
+        SPINE -.-&gt;|Higher Latency<br/>Lower Bandwidth| NS1
+        SPINE -.-&gt;|Higher Latency<br/>Lower Bandwidth| NS2
+    end
+
+    subgraph "Karpenter Configuration"
+        LT[Launch Template<br/>PlacementGroup:<br/>ml-cluster-group-a]
+
+        NC[EC2NodeClass<br/>launchTemplateName:<br/>my-cpg-template]
+
+        LT --&gt; NC
+    end
+
+    subgraph "Benefits"
+        B1[✓ Minimal Speed-of-Light<br/>Latency]
+        B2[✓ Maximum Bisection<br/>Bandwidth]
+        B3[✓ Predictable Network<br/>Performance]
+        B4[✓ Critical for Multi-node<br/>LLM Training]
+    end
+
+    subgraph "Limitations"
+        L1[⚠ Karpenter lacks native<br/>dynamic CPG support]
+        L2[⚠ Requires pre-provisioned<br/>placement groups]
+        L3[⚠ Launch Template<br/>workaround needed]
+    end
+
+    NC -.-&gt;|Provisions| N1
+    NC -.-&gt;|Provisions| N2
+    NC -.-&gt;|Provisions| N3
+    NC -.-&gt;|Provisions| N4
+
+    COMPARISON[Latency Comparison:<br/>Within CPG: ~10-20 μs<br/>Across Racks: ~100-500 μs<br/>Impact on 512-GPU training:<br/>CPG: 90% GPU utilization<br/>Scattered: 60-70% utilization]
+
+    style N1 fill:#85C88A
+    style N2 fill:#85C88A
+    style N3 fill:#85C88A
+    style N4 fill:#85C88A
+    style NS1 fill:#F8D7DA
+    style NS2 fill:#F8D7DA
+
+    style B1 fill:#D4EDDA
+    style B2 fill:#D4EDDA
+    style B3 fill:#D4EDDA
+    style B4 fill:#D4EDDA
+
+    style L1 fill:#FFF3CD
+    style L2 fill:#FFF3CD
+    style L3 fill:#FFF3CD
+
+    style COMPARISON fill:#E7F3FF
+</div>
+<hr/>
+<h2 id="slide-8-observability-user-centric-logging-with-fluent-bit">Slide 8: Observability - User-Centric Logging with Fluent Bit<a class="headerlink" href="#slide-8-observability-user-centric-logging-with-fluent-bit" title="Permanent link">¶</a></h2>
+<p><strong>Task-Based Log Streams Reduce Mean Time to Debug by Organizing Logs Around Researcher Intent</strong></p>
+<p>In a multi-tenant Compute-as-a-Service environment, an "observability chasm" exists between the scheduler (SkyPilot) and the execution environment (Kubernetes). Researchers interact with Task IDs, but Kubernetes operates on Pod UIDs. Default logging makes it frustratingly difficult to find logs for a specific job, especially across retries.</p>
+<p><strong>The Traditional Problem:</strong>
+- Researchers submit job <code>sky-job-123</code>
+- Job may create multiple pods due to retries: <code>pod-12345</code>, <code>pod-67890</code>, <code>pod-34567</code>
+- CloudWatch Container Insights creates separate log streams per pod
+- Researcher must manually search across disconnected streams to reconstruct job history
+- "Last gasp" logs from spot interruptions are lost when nodes terminate</p>
+<p><strong>High-Performance Solution - Fluent Bit Rewrite Pipeline:</strong></p>
+<p><strong>Label Injection:</strong>
+- SkyPilot automatically labels pods with <code>skypilot.task_id</code> and <code>skypilot.cluster_name</code>
+- Kubernetes metadata enriches log entries with these labels</p>
+<p><strong>Rewrite Tag Filter:</strong>
+- Fluent Bit extracts <code>skypilot.task_id</code> from Kubernetes metadata
+- Constructs new routing tag: <code>skypilot.task.sky-job-123</code>
+- All logs from all pods for same task route to single stream</p>
+<p><strong>CloudWatch Output:</strong>
+- Log stream named by task: <code>/skypilot/user-jobs/task-sky-job-123</code>
+- Coherent job history across all retries and restarts in single location
+- Researchers query by their mental model (task ID) not infrastructure detail (pod ID)</p>
+<p><strong>Spot Interruption Handling:</strong>
+- Node Termination Handler monitors SQS queue for 2-minute spot warnings
+- Sends flush signal to Fluent Bit to immediately push buffered logs
+- Secondary S3 archive via Kinesis Firehose acts as "black box" for massive failures</p>
+<p><strong>Impact:</strong> Drastically reduces Mean Time To Debug—researchers find their logs immediately instead of hunting across multiple pod streams.</p>
+<div class="mermaid">graph TB
+    subgraph "Training Pods"
+        POD1[Pod: sky-job-123-0<br/>Labels:<br/>skypilot.task_id=sky-job-123]
+        POD2[Pod: sky-job-123-1<br/>Retry after failure<br/>skypilot.task_id=sky-job-123]
+        POD3[Pod: sky-job-456-0<br/>Labels:<br/>skypilot.task_id=sky-job-456]
+    end
+
+    subgraph "Log Collection - Fluent Bit DaemonSet"
+        FB[Fluent Bit Agent<br/>on Each Node]
+
+        subgraph "Processing Pipeline"
+            INPUT[Input: Container Logs<br/>+ Kubernetes Metadata]
+            REWRITE[Rewrite Tag Filter<br/>Extract skypilot.task_id<br/>from labels]
+            TAG[New Tag:<br/>skypilot.task.sky-job-123]
+        end
+    end
+
+    subgraph "Destinations"
+        direction LR
+
+        subgraph "Real-time Logs"
+            CW[CloudWatch Logs<br/>Log Groups by Task]
+            STREAM1[/skypilot/user-jobs<br/>task-sky-job-123]
+            STREAM2[/skypilot/user-jobs<br/>task-sky-job-456]
+        end
+
+        subgraph "Archival Black Box"
+            S3[S3 Bucket<br/>via Kinesis Firehose<br/>Raw Log Archive]
+        end
+    end
+
+    subgraph "Spot Interruption Handling"
+        NTH[Node Termination<br/>Handler]
+        SQS[SQS Queue<br/>Spot Warnings]
+        FLUSH[Flush Signal<br/>to Fluent Bit]
+    end
+
+    POD1 --&gt;|stdout/stderr| FB
+    POD2 --&gt;|stdout/stderr| FB
+    POD3 --&gt;|stdout/stderr| FB
+
+    FB --&gt; INPUT
+    INPUT --&gt; REWRITE
+    REWRITE --&gt; TAG
+
+    TAG --&gt;|Task-based routing| CW
+    TAG --&gt;|Backup stream| S3
+
+    CW --&gt; STREAM1
+    CW --&gt; STREAM2
+
+    SQS --&gt;|2-min warning| NTH
+    NTH --&gt;|Cordon + Drain| POD1
+    NTH --&gt; FLUSH
+    FLUSH -.-&gt;|Emergency flush| FB
+
+    USER[Researcher]
+    USER --&gt;|Query by Task ID<br/>sky-job-123| STREAM1
+
+    Note1[Traditional Problem:<br/>Logs scattered across<br/>pod-12345, pod-67890<br/>Hard to find job history]
+
+    Note2[Solution:<br/>All retries and restarts<br/>in single task stream<br/>Coherent job history]
+
+    style REWRITE fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style STREAM1 fill:#4A90E2
+    style FLUSH fill:#F4A261
+    style Note1 fill:#F8D7DA
+    style Note2 fill:#D4EDDA
+</div>
+<hr/>
+<h2 id="slide-9-image-vending-soci-lazy-loading">Slide 9: Image Vending - SOCI Lazy Loading<a class="headerlink" href="#slide-9-image-vending-soci-lazy-loading" title="Permanent link">¶</a></h2>
+<p><strong>SOCI Snapshotter Reduces Container Startup Time by 50%+ Through On-Demand Block Fetching</strong></p>
+<p>Container image pull times are the "silent killer" of interactivity and cluster efficiency. Standard deep learning containers are often 15GB+, taking 5-10 minutes to pull on a fresh node. In a dynamic Karpenter environment where nodes are provisioned just-in-time, this latency destroys the "interactive" feel of the platform.</p>
+<p><strong>Traditional Approach - Pre-warmed AMIs:</strong>
+- Bake ML dependencies (PyTorch, TensorFlow, CUDA) into custom AMI
+- <strong>Pros:</strong> Near-instant start if user requirements exactly match AMI
+- <strong>Cons:</strong> Extremely rigid—if user needs <code>pytorch:2.1</code> but AMI has <code>2.0</code>, system reverts to full image pull
+- High operational burden: gold image pipelines, constant patching, version sprawl</p>
+<p><strong>SOCI (Seekable OCI) - The Modern Solution:</strong></p>
+<p><strong>Lazy Loading Mechanism:</strong>
+- SOCI creates an index of the container image (stored in ECR alongside image)
+- SOCI snapshotter in containerd mounts a FUSE filesystem
+- Application starts <strong>immediately</strong> without downloading entire image
+- When application executes <code>import torch</code>, FUSE filesystem fetches only the specific blocks needed from registry</p>
+<p><strong>Hybrid Optimization - SOCI + NVMe Caching:</strong>
+- NVMe RAID0 (provisioned by Karpenter) serves as local cache for SOCI snapshotter
+- First access fetches blocks over network and caches to NVMe
+- Subsequent accesses serve from local NVMe at microsecond latency
+- Mitigates FUSE overhead for repeated operations during training</p>
+<p><strong>Performance Benchmarks:</strong>
+- <strong>Traditional pull:</strong> 5-10 minutes in ContainerCreating status
+- <strong>SOCI:</strong> Seconds from provisioned to running user code
+- <strong>50%+ reduction</strong> in startup latency for large ML images
+- Better cluster utilization—nodes productive immediately instead of waiting</p>
+<p><strong>Researcher Experience Impact:</strong> Platform feels "interactive" and responsive. Researchers can rapidly iterate on experiments instead of waiting for infrastructure.</p>
+<div class="mermaid">graph TB
+    subgraph "Container Registry"
+        ECR[Amazon ECR<br/>Container Images]
+        IMG[pytorch:2.1-cuda12<br/>15 GB Image]
+        SOCI_IDX[SOCI Index<br/>Block Mapping]
+
+        IMG -.-&gt;|Generated from| SOCI_IDX
+    end
+
+    subgraph "Traditional Image Pull"
+        direction TB
+        TRAD_START[Pod Scheduled]
+        TRAD_PULL[Download Entire<br/>15 GB Image]
+        TRAD_EXTRACT[Extract Layers<br/>to Disk]
+        TRAD_START_APP[Start Application]
+
+        TRAD_START --&gt; TRAD_PULL
+        TRAD_PULL --&gt;|5-10 minutes| TRAD_EXTRACT
+        TRAD_EXTRACT --&gt; TRAD_START_APP
+    end
+
+    subgraph "SOCI Lazy Loading"
+        direction TB
+        SOCI_START[Pod Scheduled]
+        SOCI_MOUNT[Mount FUSE<br/>Filesystem]
+        SOCI_APP_START[Start Application<br/>Immediately]
+        SOCI_DEMAND[Fetch Blocks<br/>On-Demand]
+
+        SOCI_START --&gt; SOCI_MOUNT
+        SOCI_MOUNT --&gt;|Seconds| SOCI_APP_START
+        SOCI_APP_START -.-&gt;|import torch| SOCI_DEMAND
+    end
+
+    subgraph "NVMe Caching Layer"
+        NVME[NVMe RAID0<br/>/mnt/local-scratch]
+        CACHE_HIT{Block in<br/>Cache?}
+        LOCAL[Serve from<br/>Local NVMe<br/>Microsecond latency]
+        REMOTE[Fetch from ECR<br/>Cache to NVMe]
+    end
+
+    ECR --&gt; TRAD_PULL
+    ECR --&gt; SOCI_IDX
+
+    SOCI_IDX --&gt; SOCI_MOUNT
+
+    SOCI_DEMAND --&gt; CACHE_HIT
+    CACHE_HIT --&gt;|Yes| LOCAL
+    CACHE_HIT --&gt;|No| REMOTE
+
+    REMOTE --&gt;|Store| NVME
+    LOCAL -.-&gt;|Read| NVME
+
+    METRICS[Performance Impact:<br/>✓ 50%+ reduction in startup time<br/>✓ Node ready in seconds vs minutes<br/>✓ Better cluster utilization<br/>✓ Improved researcher experience]
+
+    COMPARISON[Comparison:<br/>Traditional: 5-10 min wait<br/>SOCI: Near-instant start<br/>SOCI+NVMe: Fast + sustained]
+
+    style SOCI_MOUNT fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style SOCI_APP_START fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style NVME fill:#4A90E2
+    style LOCAL fill:#D4EDDA
+
+    style TRAD_PULL fill:#F8D7DA
+    style TRAD_EXTRACT fill:#F8D7DA
+
+    style METRICS fill:#D4EDDA
+    style COMPARISON fill:#FFF3CD
+</div>
+<hr/>
+<h2 id="slide-10-failure-handling-graceful-spot-interruption-recovery">Slide 10: Failure Handling - Graceful Spot Interruption Recovery<a class="headerlink" href="#slide-10-failure-handling-graceful-spot-interruption-recovery" title="Permanent link">¶</a></h2>
+<p><strong>SIGTERM Signal Handling with MOUNT_CACHED Checkpoints Prevents Wasted Compute Hours</strong></p>
+<p>In a cost-efficient ML platform, spot instances are fundamental. However, spot interruptions are inevitable—AWS provides 2-minute warning before reclamation. Without architectural intervention, these interruptions result in lost progress and wasted compute hours. The platform must distinguish between "Platform Failures" (spot preemption) and "User Failures" (code bugs) and make platform failures transparent.</p>
+<p><strong>The Critical Gap - Default Behavior:</strong>
+- AWS emits Spot Interruption Warning (2 minutes notice)
+- Karpenter cordons and drains node
+- Kubernetes sends SIGTERM to pods
+- <strong>Problem:</strong> Many ML scripts (especially Python) ignore SIGTERM by default
+- Scripts continue running until SIGKILL after 2 minutes
+- All progress since last checkpoint is lost
+- SkyPilot sees job as "crashed" rather than "preempted"</p>
+<p><strong>High-Performance Solution - Signal Handling + MOUNT_CACHED:</strong></p>
+<p><strong>Signal Propagation Chain:</strong>
+1. AWS → SQS Queue (Spot Warning)
+2. Karpenter + Node Termination Handler consume event
+3. Node cordoned and drain initiated
+4. SIGTERM sent to training pods
+5. <strong>Application signal handler triggered</strong></p>
+<p><strong>Graceful Checkpoint Pattern:</strong>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">signal</span>
+<a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<a href="#__codelineno-0-3" id="__codelineno-0-3" name="__codelineno-0-3"></a>
+<a href="#__codelineno-0-4" id="__codelineno-0-4" name="__codelineno-0-4"></a><span class="k">def</span><span class="w"> </span><span class="nf">graceful_exit</span><span class="p">(</span><span class="n">signum</span><span class="p">,</span> <span class="n">frame</span><span class="p">):</span>
+<a href="#__codelineno-0-5" id="__codelineno-0-5" name="__codelineno-0-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">"Caught SIGTERM. Saving emergency checkpoint..."</span><span class="p">)</span>
+<a href="#__codelineno-0-6" id="__codelineno-0-6" name="__codelineno-0-6"></a>    <span class="n">save_checkpoint</span><span class="p">()</span>  <span class="c1"># Write to local NVMe</span>
+<a href="#__codelineno-0-7" id="__codelineno-0-7" name="__codelineno-0-7"></a>    <span class="n">sys</span><span class="o">.</span><span class="n">exit</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># Exit code 0 = retry-able event</span>
+<a href="#__codelineno-0-8" id="__codelineno-0-8" name="__codelineno-0-8"></a>
+<a href="#__codelineno-0-9" id="__codelineno-0-9" name="__codelineno-0-9"></a><span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGTERM</span><span class="p">,</span> <span class="n">graceful_exit</span><span class="p">)</span>
+</code></pre></div></p>
+<p><strong>MOUNT_CACHED Acceleration:</strong>
+- Checkpoint written to local NVMe RAID0 at <strong>gigabytes per second</strong>
+- Training loop resumes immediately (no blocking on S3 write)
+- Background process asynchronously uploads to S3
+- Reduces "checkpoint tax" (GPU idle time) by nearly 10x</p>
+<p><strong>Recovery Flow:</strong>
+- SkyPilot detects preemption (exit code 0 + node lost)
+- Automatically reschedules task on new node (possibly different AZ)
+- Loads latest checkpoint from S3
+- Resumes training seamlessly—lost &lt; 2 minutes of work vs. entire job restart</p>
+<p><strong>Impact:</strong> Transforms spot interruptions from catastrophic failures into transparent platform events. Researchers experience seamless recovery without manual intervention.</p>
+<div class="mermaid">sequenceDiagram
+    participant AWS as AWS EC2
+    participant SQS as SQS Queue
+    participant KARP as Karpenter
+    participant NTH as Node Termination<br/>Handler
+    participant NODE as GPU Node
+    participant POD as Training Pod
+    participant APP as Training Script
+    participant S3 as S3 Checkpoint<br/>Bucket
+    participant SP as SkyPilot
+
+    Note over AWS: Spot Instance Selected<br/>for Reclamation
+
+    AWS-&gt;&gt;SQS: Spot Interruption Warning<br/>(2 minutes notice)
+
+    SQS-&gt;&gt;KARP: Poll Event
+    SQS-&gt;&gt;NTH: Poll Event
+
+    KARP-&gt;&gt;NODE: Cordon Node<br/>(No new pods)
+
+    NTH-&gt;&gt;NODE: Initiate Drain
+
+    NODE-&gt;&gt;POD: Send SIGTERM Signal
+
+    POD-&gt;&gt;APP: Propagate SIGTERM
+
+    Note over APP: Signal Handler Triggered<br/>graceful_exit()
+
+    APP-&gt;&gt;APP: Pause Training Loop
+
+    APP-&gt;&gt;NODE: Write Emergency Checkpoint<br/>to NVMe /mnt/local-scratch<br/>(Gigabytes/sec)
+
+    Note over NODE: MOUNT_CACHED Mode:<br/>Checkpoint written locally<br/>Upload queued
+
+    APP-&gt;&gt;POD: Exit with Code 0<br/>(Retry-able Event)
+
+    POD-&gt;&gt;NODE: Container Terminated
+
+    NODE-&gt;&gt;S3: Background Async Upload<br/>Checkpoint to S3<br/>(continues during drain)
+
+    NODE-&gt;&gt;KARP: Node Draining Complete
+
+    KARP-&gt;&gt;SP: Node Termination Event
+
+    AWS-&gt;&gt;NODE: Instance Terminated
+
+    SP-&gt;&gt;SP: Detect Preemption<br/>(Exit Code 0 + Node Lost)
+
+    SP-&gt;&gt;KARP: Request New Node<br/>(Possibly different AZ)
+
+    KARP-&gt;&gt;NODE: Provision Replacement
+
+    SP-&gt;&gt;POD: Reschedule Pod<br/>on New Node
+
+    POD-&gt;&gt;S3: Load Latest Checkpoint
+
+    POD-&gt;&gt;APP: Resume Training<br/>from Checkpoint
+
+    Note over APP: Seamless Recovery:<br/>Lost &lt; 2 minutes of work<br/>vs. entire job restart
+
+    rect rgb(240, 248, 255)
+    Note over APP,S3: Without Signal Handling:<br/>- SIGKILL after 2 min<br/>- Lost checkpoint progress<br/>- Job appears as crash<br/>- Manual restart needed
+    end
+
+    rect rgb(240, 255, 240)
+    Note over APP,S3: With High-Performance Pattern:<br/>- Graceful checkpoint save<br/>- Automatic rescheduling<br/>- Transparent to researcher<br/>- Platform failure handled
+    end
+</div>
+<hr/>
+<h2 id="slide-11-karpenter-provisioning-automated-node-configuration">Slide 11: Karpenter Provisioning - Automated Node Configuration<a class="headerlink" href="#slide-11-karpenter-provisioning-automated-node-configuration" title="Permanent link">¶</a></h2>
+<p><strong>Karpenter EC2NodeClass with User Data Automation Ensures Optimal Node Configuration at Boot</strong></p>
+<p>Karpenter's EC2NodeClass is the definitive mechanism for codifying the configuration of underlying compute nodes. The "High-Performance Way" uses this to automate NVMe RAID0 formatting, FSx mounting, and EFA attachment—ensuring nodes are optimally configured before accepting workloads.</p>
+<p><strong>Provisioning Sequence:</strong></p>
+<p><strong>1. Job Submission:</strong>
+- Researcher submits SkyPilot task requesting 8 GPUs + EFA resources
+- SkyPilot generates Kubernetes Pod specification with resource limits</p>
+<p><strong>2. Karpenter Evaluation:</strong>
+- Kubernetes scheduler finds no suitable node (pod pending)
+- Karpenter evaluates NodePool and EC2NodeClass constraints
+- Selects instance type: p5.48xlarge (8 H100 GPUs, EFA support, 8x 1TB NVMe)</p>
+<p><strong>3. Instance Launch with Automation:</strong>
+- Karpenter launches EC2 instance with User Data script
+- Launch Template specifies Cluster Placement Group for low latency
+- User Data executes <strong>before kubelet starts</strong></p>
+<p><strong>4. User Data Execution (Critical for Performance):</strong>
+<div class="highlight"><pre><span></span><code><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a><span class="c1"># Stop kubelet to prevent race conditions</span>
+<a href="#__codelineno-1-2" id="__codelineno-1-2" name="__codelineno-1-2"></a>systemctl<span class="w"> </span>stop<span class="w"> </span>kubelet
+<a href="#__codelineno-1-3" id="__codelineno-1-3" name="__codelineno-1-3"></a>
+<a href="#__codelineno-1-4" id="__codelineno-1-4" name="__codelineno-1-4"></a><span class="c1"># Identify and RAID0 NVMe disks (excluding root)</span>
+<a href="#__codelineno-1-5" id="__codelineno-1-5" name="__codelineno-1-5"></a><span class="nv">devices</span><span class="o">=</span><span class="k">$(</span>lsblk<span class="w"> </span>-dno<span class="w"> </span>NAME<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>nvme<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-v<span class="w"> </span>nvme0n1<span class="k">)</span>
+<a href="#__codelineno-1-6" id="__codelineno-1-6" name="__codelineno-1-6"></a>mdadm<span class="w"> </span>--create<span class="w"> </span>/dev/md0<span class="w"> </span>--level<span class="o">=</span><span class="m">0</span><span class="w"> </span>--raid-devices<span class="o">=</span><span class="m">8</span><span class="w"> </span>/dev/<span class="nv">$devices</span>
+<a href="#__codelineno-1-7" id="__codelineno-1-7" name="__codelineno-1-7"></a>mkfs.xfs<span class="w"> </span>/dev/md0
+<a href="#__codelineno-1-8" id="__codelineno-1-8" name="__codelineno-1-8"></a>mount<span class="w"> </span>/dev/md0<span class="w"> </span>/mnt/local-scratch
+<a href="#__codelineno-1-9" id="__codelineno-1-9" name="__codelineno-1-9"></a>chmod<span class="w"> </span><span class="m">777</span><span class="w"> </span>/mnt/local-scratch
+<a href="#__codelineno-1-10" id="__codelineno-1-10" name="__codelineno-1-10"></a>
+<a href="#__codelineno-1-11" id="__codelineno-1-11" name="__codelineno-1-11"></a><span class="c1"># Start kubelet</span>
+<a href="#__codelineno-1-12" id="__codelineno-1-12" name="__codelineno-1-12"></a>systemctl<span class="w"> </span>start<span class="w"> </span>kubelet
+</code></pre></div></p>
+<p><strong>5. Resource Attachment:</strong>
+- VPC CNI Plugin attaches EFA ENIs (4x 400 Gbps interfaces)
+- FSx CSI Driver mounts parallel file system via PersistentVolume
+- Node registers with Kubernetes advertising GPU, EFA, and storage resources</p>
+<p><strong>6. Policy Automation:</strong>
+- Kyverno policy detects EFA resource request
+- Auto-injects environment variables (<code>FI_PROVIDER=efa</code>, etc.)</p>
+<p><strong>7. Image Loading:</strong>
+- SOCI snapshotter lazy-loads container image
+- NVMe cache accelerates subsequent block fetches</p>
+<p><strong>8. Job Execution:</strong>
+- Pod scheduled to node and starts immediately
+- Training uses FSx for data (1200 Gbps), NVMe for checkpoints, EFA for multi-node sync</p>
+<p><strong>Impact:</strong> Entire provisioning sequence—from job submission to training start—completes in minutes instead of hours. Automation ensures consistent, optimal configuration without manual intervention.</p>
+<div class="mermaid">sequenceDiagram
+    participant R as Researcher
+    participant SP as SkyPilot
+    participant K8S as Kubernetes API
+    participant KARP as Karpenter
+    participant EC2 as AWS EC2
+    participant NODE as GPU Node
+
+    R-&gt;&gt;SP: Submit Training Job<br/>sky launch task.yaml
+    SP-&gt;&gt;K8S: Create Pod with<br/>resources.limits.efa=4<br/>resources.limits.gpu=8
+
+    K8S-&gt;&gt;K8S: Schedule Pod<br/>(Pending - No Node)
+
+    K8S-&gt;&gt;KARP: Trigger Provisioning<br/>Unschedulable Pod Event
+
+    KARP-&gt;&gt;KARP: Evaluate NodePool<br/>+ EC2NodeClass
+
+    Note over KARP: Select Instance Type<br/>p5.48xlarge<br/>(EFA + 8 H100 GPUs)
+
+    KARP-&gt;&gt;EC2: Launch Instance<br/>+ User Data Script<br/>+ Launch Template<br/>(Placement Group)
+
+    EC2-&gt;&gt;NODE: Instance Starts
+
+    Note over NODE: User Data Execution<br/>1. Stop kubelet<br/>2. RAID0 NVMe disks<br/>3. Mount to /mnt/local-scratch<br/>4. Start kubelet
+
+    NODE-&gt;&gt;NODE: Format NVMe RAID0<br/>mdadm --create /dev/md0
+
+    NODE-&gt;&gt;NODE: Mount FSx via CSI<br/>PersistentVolume binding
+
+    NODE-&gt;&gt;K8S: Register Node<br/>with EFA resources
+
+    K8S-&gt;&gt;NODE: Attach EFA ENIs<br/>via VPC CNI Plugin
+
+    K8S-&gt;&gt;NODE: Schedule Pod<br/>to Node
+
+    NODE-&gt;&gt;NODE: Kyverno Policy<br/>Inject EFA env vars<br/>FI_PROVIDER=efa
+
+    NODE-&gt;&gt;NODE: SOCI Snapshotter<br/>Lazy-load Container Image
+
+    NODE-&gt;&gt;SP: Pod Running
+    SP-&gt;&gt;R: Job Started<br/>Training in Progress
+
+    Note over NODE: Training uses:<br/>- FSx for data (1200 Gbps)<br/>- NVMe for checkpoints<br/>- EFA for multi-node sync
+</div>
+<hr/>
+<h2 id="slide-12-decision-matrix-ranked-architectural-choices">Slide 12: Decision Matrix - Ranked Architectural Choices<a class="headerlink" href="#slide-12-decision-matrix-ranked-architectural-choices" title="Permanent link">¶</a></h2>
+<p><strong>Evidence Unequivocally Supports FSx, EFA, and SOCI as Foundation for Maximum Researcher Experience</strong></p>
+<p>The architectural decisions are ranked by their impact on Researcher Experience (RX) and performance. Default configurations favor operational simplicity over RX—the "High-Performance Way" inverts this prioritization to maximize researcher productivity and minimize infrastructure friction.</p>
+<p><strong>Ranking Methodology:</strong>
+- <strong>Critical Impact:</strong> Prevents job failures or eliminates major bottlenecks
+- <strong>High Impact:</strong> Significantly improves performance or interactivity
+- <strong>Medium Impact:</strong> Reduces debugging time or provides cost-free performance gains</p>
+<p><strong>Rank 1 - CRITICAL: Data &amp; Storage</strong>
+- <strong>Easy Way:</strong> Mountpoint for S3 (free, simple, limited POSIX, slow metadata)
+- <strong>High-Performance Way:</strong> FSx for Lustre + NVMe RAID0 (full POSIX, 1200 Gbps, local caching)
+- <strong>Impact:</strong> Enables training on massive datasets without I/O bottlenecks; prevents job crashes due to file system incompatibilities</p>
+<p><strong>Rank 2 - HIGH: Networking</strong>
+- <strong>Easy Way:</strong> Standard VPC CNI (works for single-node, TCP overhead)
+- <strong>High-Performance Way:</strong> EFA + Kyverno auto-config (OS-bypass, 400 Gbps per interface, essential for multi-node)
+- <strong>Impact:</strong> Reduces "bubble time" in distributed training; prevents silent 10x performance degradation</p>
+<p><strong>Rank 3 - HIGH: Image Vending</strong>
+- <strong>Easy Way:</strong> Standard image pull (simple, 5-10 min startup)
+- <strong>High-Performance Way:</strong> SOCI lazy loading (instant start, NVMe caching, 50%+ faster)
+- <strong>Impact:</strong> Makes platform feel "interactive" and responsive; enables faster iteration loops</p>
+<p><strong>Rank 4 - MEDIUM: Observability</strong>
+- <strong>Easy Way:</strong> Container Insights (default setup, pod-based logs, hard to find jobs)
+- <strong>High-Performance Way:</strong> Fluent Bit + task tagging (task-based streams, coherent history, spot log preservation)
+- <strong>Impact:</strong> Drastically reduces Mean Time To Debug for researchers finding their logs</p>
+<p><strong>Rank 5 - MEDIUM: Ephemeral Storage</strong>
+- <strong>Easy Way:</strong> EBS volumes only (persistent, network latency, costly at scale)
+- <strong>High-Performance Way:</strong> Automated NVMe RAID0 (millions of IOPS, free ephemeral, Karpenter automation)
+- <strong>Impact:</strong> Provides "free" high-speed scratch space for datasets and checkpoints</p>
+<p><strong>Rank 6 - MEDIUM: Reliability</strong>
+- <strong>Easy Way:</strong> Blind job restart (simple retry, lost progress, wasted compute)
+- <strong>High-Performance Way:</strong> SIGTERM handling + MOUNT_CACHED (graceful checkpoints, async S3 upload, auto-rescheduling)
+- <strong>Impact:</strong> Prevents lost compute hours by saving state immediately before preemption</p>
+<p><strong>Conclusion:</strong> Implementing the "High-Performance Way" patterns transforms the platform from a simple job scheduler into a true high-performance research accelerator where compute is nearly instantaneous and storage is transparently performant.</p>
+<div class="mermaid">graph TB
+    subgraph "Architectural Decision Matrix - Ranked by RX Impact"
+        direction TB
+
+        subgraph "Rank 1 - CRITICAL: Data &amp; Storage"
+            R1_EASY[Easy Way:<br/>Mountpoint for S3<br/>✓ Free, Simple<br/>✗ Limited POSIX<br/>✗ Slow Metadata]
+            R1_HP[High-Performance Way:<br/>FSx Lustre + NVMe RAID0<br/>✓ Full POSIX<br/>✓ 1200 Gbps throughput<br/>✓ Local caching<br/>Impact: Prevents I/O bottlenecks]
+
+            R1_EASY -.-&gt;|Upgrade| R1_HP
+        end
+
+        subgraph "Rank 2 - HIGH: Networking"
+            R2_EASY[Easy Way:<br/>Standard VPC CNI<br/>✓ Works for single-node<br/>✗ TCP overhead<br/>✗ Limited bandwidth]
+            R2_HP[High-Performance Way:<br/>EFA + Kyverno Auto-config<br/>✓ OS-bypass networking<br/>✓ 400 Gbps per interface<br/>✓ Essential for multi-node<br/>Impact: Reduces bubble time]
+
+            R2_EASY -.-&gt;|Upgrade| R2_HP
+        end
+
+        subgraph "Rank 3 - HIGH: Image Vending"
+            R3_EASY[Easy Way:<br/>Standard Image Pull<br/>✓ Simple<br/>✗ 5-10 min startup<br/>✗ Poor interactivity]
+            R3_HP[High-Performance Way:<br/>SOCI Lazy Loading<br/>✓ Instant start<br/>✓ NVMe caching<br/>✓ 50%+ faster<br/>Impact: Interactive feel]
+
+            R3_EASY -.-&gt;|Upgrade| R3_HP
+        end
+
+        subgraph "Rank 4 - MEDIUM: Observability"
+            R4_EASY[Easy Way:<br/>Container Insights<br/>✓ Default setup<br/>✗ Pod-based logs<br/>✗ Hard to find jobs]
+            R4_HP[High-Performance Way:<br/>Fluent Bit + Task Tagging<br/>✓ Task-based streams<br/>✓ Coherent history<br/>✓ Spot log preservation<br/>Impact: Faster debugging]
+
+            R4_EASY -.-&gt;|Upgrade| R4_HP
+        end
+
+        subgraph "Rank 5 - MEDIUM: Ephemeral Storage"
+            R5_EASY[Easy Way:<br/>EBS Volumes Only<br/>✓ Persistent<br/>✗ Network latency<br/>✗ Cost at scale]
+            R5_HP[High-Performance Way:<br/>Automated NVMe RAID0<br/>✓ Millions of IOPS<br/>✓ Free ephemeral<br/>✓ Karpenter automation<br/>Impact: Free performance]
+
+            R5_EASY -.-&gt;|Upgrade| R5_HP
+        end
+
+        subgraph "Rank 6 - MEDIUM: Reliability"
+            R6_EASY[Easy Way:<br/>Blind Job Restart<br/>✓ Simple retry<br/>✗ Lost progress<br/>✗ Wasted compute]
+            R6_HP[High-Performance Way:<br/>SIGTERM + MOUNT_CACHED<br/>✓ Graceful checkpoints<br/>✓ Async S3 upload<br/>✓ Auto-rescheduling<br/>Impact: Saves compute hours]
+
+            R6_EASY -.-&gt;|Upgrade| R6_HP
+        end
+    end
+
+    PRINCIPLE[Guiding Principle:<br/>Default configurations favor<br/>operational simplicity over RX.<br/>High-Performance Way inverts this<br/>to maximize researcher experience.]
+
+    style R1_HP fill:#85C88A,stroke:#2D5F3E,stroke-width:4px
+    style R2_HP fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style R3_HP fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style R4_HP fill:#A8D5BA,stroke:#2D5F3E,stroke-width:2px
+    style R5_HP fill:#A8D5BA,stroke:#2D5F3E,stroke-width:2px
+    style R6_HP fill:#A8D5BA,stroke:#2D5F3E,stroke-width:2px
+
+    style R1_EASY fill:#F8D7DA
+    style R2_EASY fill:#F8D7DA
+    style R3_EASY fill:#F8D7DA
+    style R4_EASY fill:#FFF3CD
+    style R5_EASY fill:#FFF3CD
+    style R6_EASY fill:#FFF3CD
+
+    style PRINCIPLE fill:#E7F3FF
+</div>
+<hr/>
+<h2 id="slide-13-hardening-fallback-plan-gaps-to-close">Slide 13: Hardening &amp; Fallback Plan (Gaps to Close)<a class="headerlink" href="#slide-13-hardening-fallback-plan-gaps-to-close" title="Permanent link">¶</a></h2>
+<p><strong>Resiliency</strong>
+- Add multi-AZ option or backup FSx/ONTAP plus a “degraded mode” (no placement groups/EFA) when capacity is constrained.
+- Define FSx scratch lifecycle: data repo sync cadence, TTL/quotas for scratch, and checkpoint durability guarantees back to S3.</p>
+<p><strong>Security &amp; Tenancy</strong>
+- Per-tenant namespaces + IRSA, GPU/EFA quota policies, PodSecurity + NetworkPolicy defaults, scoped FSx/S3 access, secrets management, and image signing/verification.</p>
+<p><strong>Provisioning Robustness</strong>
+- Health checks in user-data/systemd for mdadm/FSx/EFA bring-up; fail fast on mount/attach errors; guard against rooting the wrong NVMe; record bootstrap timings.</p>
+<p><strong>Spot Handling</strong>
+- Provide platform-side pre-stop hook/sidecar to capture emergency checkpoints even if user code lacks SIGTERM handling; confirm checkpoints persisted to S3 before node termination.</p>
+<p><strong>Observability</strong>
+- Add DCGM GPU metrics, NCCL/EFA transport choice, boot/provision latency, and cost attribution per task; set CloudWatch/S3 retention budgets.</p>
+<p><strong>SOCI &amp; Supply Chain</strong>
+- Define behavior when SOCI index is missing, prefetch guidance for hot libraries, compatibility requirements (containerd/Bottlerocket), and enforce image signing/provenance.</p>
+</article>
+</div>
+<script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+<button class="md-top md-icon" data-md-component="top" hidden="" type="button">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+<div class="md-social">
+<a class="md-social__link" href="https://github.com/your-org/skyhook" rel="noopener" target="_blank" title="github.com">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link"], "search": "../../assets/javascripts/workers/search.7a47a382.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+<script src="../../assets/javascripts/bundle.e71a0d61.min.js"></script>
+<script type="module">import mermaid from "https://unpkg.com/mermaid@10.4.0/dist/mermaid.esm.min.mjs";
+mermaid.initialize({});</script></body>
+</html>

@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Per-cluster NTH SQS queue and IAM'
+
+Parameters:
+  ClusterName:
+    Type: String
+    Description: EKS cluster name
+  Environment:
+    Type: String
+    Description: Environment name
+
+Resources:
+  NTHQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "nth-${ClusterName}"
+      MessageRetentionPeriod: 300
+      VisibilityTimeoutSeconds: 30
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt NTHDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  NTHDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "nth-${ClusterName}-dlq"
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  NTHQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref NTHQueue]
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt NTHQueue.Arn
+
+  NTHServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterName}-nth-role"
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/${OIDCProvider}"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                !Sub "${OIDCProvider}:sub": "system:serviceaccount:kube-system:aws-node-termination-handler"
+                !Sub "${OIDCProvider}:aud": "sts.amazonaws.com"
+      Policies:
+        - PolicyName: NTHQueueAccess
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt NTHQueue.Arn
+
+Parameters:
+  OIDCProvider:
+    Type: String
+    Description: OIDC provider URL (without https://)
+
+Outputs:
+  QueueURL:
+    Value: !Ref NTHQueue
+    Export:
+      Name: !Sub "${ClusterName}-nth-queue-url"
+  
+  ServiceRoleArn:
+    Value: !GetAtt NTHServiceRole.Arn
+    Export:
+      Name: !Sub "${ClusterName}-nth-role-arn"

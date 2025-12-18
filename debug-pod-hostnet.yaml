@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-aws-node-logs-hostnet
+  namespace: kube-system
+spec:
+  nodeName: ip-10-0-9-142.us-west-2.compute.internal
+  hostNetwork: true
+  containers:
+  - name: debug
+    image: alpine
+    command: ["cat", "/logs/ipamd.log"]
+    volumeMounts:
+    - name: logs
+      mountPath: "/logs"
+  volumes:
+  - name: logs
+    hostPath:
+      path: /var/log/aws-routed-eni
+      type: Directory
+  restartPolicy: Never

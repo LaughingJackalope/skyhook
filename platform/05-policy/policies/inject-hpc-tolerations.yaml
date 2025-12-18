@@ -1,0 +1,41 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: inject-hpc-tolerations
+  annotations:
+    policies.kyverno.io/title: Inject HPC Tolerations and Node Selector
+    policies.kyverno.io/category: HPC Configuration
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/description: >-
+      Automatically add HPC node tolerations and node selector when pods are
+      annotated with skypilot.co/hpc=true. This allows workloads to schedule
+      on dedicated HPC nodes that are tainted for exclusive use.
+spec:
+  background: true
+  rules:
+    - name: inject-hpc-tolerations
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      preconditions:
+        all:
+          - key: "{{ request.object.metadata.annotations.\"skypilot.co/hpc\" || '' }}"
+            operator: Equals
+            value: "true"
+      mutate:
+        patchStrategicMerge:
+          spec:
+            tolerations:
+              - key: nvidia.com/gpu
+                operator: Exists
+                effect: NoSchedule
+              - key: skyhook.io/workload
+                operator: Equal
+                value: hpc
+                effect: NoSchedule
+            nodeSelector:
+              skyhook.io/tier: hpc
+

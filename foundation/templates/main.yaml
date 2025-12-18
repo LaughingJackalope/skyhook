@@ -1,0 +1,318 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Skyhook Foundation - Root Stack
+  Orchestrates VPC, storage, and placement group infrastructure.
+  This is the long-lived layer that cluster releases are built upon.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Environment Configuration
+        Parameters:
+          - Environment
+          - PrimaryAZ
+          - SecondaryAZ
+          - TertiaryAZ
+      - Label:
+          default: Network Configuration
+        Parameters:
+          - VpcCidr
+      - Label:
+          default: Storage Configuration
+        Parameters:
+          - FsxStorageCapacity
+          - FsxDeploymentType
+          - FsxThroughput
+          - DataRepositoryPath
+      - Label:
+          default: Template Locations
+        Parameters:
+          - TemplateBaseUrl
+
+Parameters:
+  Environment:
+    Type: String
+    Description: >
+      Environment identifier in format: {org}-{region-short}
+      Example: accel-usw2, research-use1
+    AllowedPattern: "[a-z0-9]+-[a-z0-9]+"
+    ConstraintDescription: Must be lowercase alphanumeric with single hyphen (e.g., accel-usw2)
+
+  PrimaryAZ:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: us-west-2a
+    Description: Primary AZ for HPC workloads (verify p4d/p5 availability)
+
+  SecondaryAZ:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: us-west-2b
+    Description: Secondary AZ for HA and overflow
+
+  TertiaryAZ:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: us-west-2c
+    Description: Tertiary AZ for system components
+
+  VpcCidr:
+    Type: String
+    Default: "10.0.0.0/16"
+    Description: VPC CIDR block (must be /16)
+    AllowedPattern: "^10\\.\\d{1,3}\\.0\\.0/16$"
+    ConstraintDescription: Must be a /16 CIDR in the 10.x.0.0 range
+
+  FsxStorageCapacity:
+    Type: Number
+    Default: 1200
+    Description: FSx storage capacity in GB
+    AllowedValues: [1200, 2400, 4800, 7200, 9600]
+
+  FsxDeploymentType:
+    Type: String
+    Default: PERSISTENT_2
+    Description: FSx deployment type (PERSISTENT_2 recommended for durability + KMS)
+    AllowedValues:
+      - SCRATCH_1
+      - SCRATCH_2
+      - PERSISTENT_1
+      - PERSISTENT_2
+
+  FsxThroughput:
+    Type: Number
+    Default: 125
+    Description: Per-unit storage throughput in MB/s/TiB (PERSISTENT types only)
+    AllowedValues: [125, 250, 500, 1000]
+
+  DataRepositoryPath:
+    Type: String
+    Default: ""
+    Description: Optional S3 path for FSx data repository (e.g., s3://bucket/prefix)
+
+  TemplateBaseUrl:
+    Type: String
+    Description: S3 URL base for nested templates (e.g., https://bucket.s3.region.amazonaws.com/templates)
+    Default: ""
+
+Conditions:
+  UseS3Templates: !Not [!Equals [!Ref TemplateBaseUrl, ""]]
+
+Resources:
+  #============================================================================
+  # VPC Stack
+  #============================================================================
+  VpcStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !If
+        - UseS3Templates
+        - !Sub ${TemplateBaseUrl}/vpc.yaml
+        - !Sub https://${AWS::StackName}-templates.s3.${AWS::Region}.amazonaws.com/vpc.yaml
+      Parameters:
+        Environment: !Ref Environment
+        VpcCidr: !Ref VpcCidr
+        PrimaryAZ: !Ref PrimaryAZ
+        SecondaryAZ: !Ref SecondaryAZ
+        TertiaryAZ: !Ref TertiaryAZ
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/stack-layer
+          Value: vpc
+
+  #============================================================================
+  # VPC Endpoints Stack
+  #============================================================================
+  EndpointsStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: VpcStack
+    Properties:
+      TemplateURL: !If
+        - UseS3Templates
+        - !Sub ${TemplateBaseUrl}/endpoints.yaml
+        - !Sub https://${AWS::StackName}-templates.s3.${AWS::Region}.amazonaws.com/endpoints.yaml
+      Parameters:
+        Environment: !Ref Environment
+        VpcId: !GetAtt VpcStack.Outputs.VpcId
+        PrivateRouteTableIds: !GetAtt VpcStack.Outputs.PrivateRouteTableIds
+        SystemSubnetIds: !GetAtt VpcStack.Outputs.SystemSubnetIds
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/stack-layer
+          Value: endpoints
+
+  #============================================================================
+  # Storage Stack (FSx, KMS)
+  #============================================================================
+  StorageStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: VpcStack
+    Properties:
+      TemplateURL: !If
+        - UseS3Templates
+        - !Sub ${TemplateBaseUrl}/storage.yaml
+        - !Sub https://${AWS::StackName}-templates.s3.${AWS::Region}.amazonaws.com/storage.yaml
+      Parameters:
+        Environment: !Ref Environment
+        VpcId: !GetAtt VpcStack.Outputs.VpcId
+        StorageSubnetId: !GetAtt VpcStack.Outputs.StorageSubnetId
+        HpcSubnetIds: !GetAtt VpcStack.Outputs.HpcSubnetIds
+        FsxStorageCapacity: !Ref FsxStorageCapacity
+        FsxDeploymentType: !Ref FsxDeploymentType
+        FsxThroughput: !Ref FsxThroughput
+        DataRepositoryPath: !Ref DataRepositoryPath
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/stack-layer
+          Value: storage
+
+  #============================================================================
+  # Placement Groups Stack
+  #============================================================================
+  PlacementGroupsStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !If
+        - UseS3Templates
+        - !Sub ${TemplateBaseUrl}/placement-groups.yaml
+        - !Sub https://${AWS::StackName}-templates.s3.${AWS::Region}.amazonaws.com/placement-groups.yaml
+      Parameters:
+        Environment: !Ref Environment
+        PrimaryAZ: !Ref PrimaryAZ
+        SecondaryAZ: !Ref SecondaryAZ
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/stack-layer
+          Value: placement-groups
+
+  #============================================================================
+  # Foundation Metadata SSM Parameter
+  # Single parameter with all foundation outputs for easy cluster consumption
+  #============================================================================
+  FoundationMetadataParameter:
+    Type: AWS::SSM::Parameter
+    DependsOn:
+      - VpcStack
+      - StorageStack
+      - PlacementGroupsStack
+    Properties:
+      Name: !Sub /skyhook/${Environment}/foundation-metadata
+      Type: String
+      Value: !Sub |
+        {
+          "environment": "${Environment}",
+          "region": "${AWS::Region}",
+          "vpc_id": "${VpcStack.Outputs.VpcId}",
+          "vpc_cidr": "${VpcCidr}",
+          "primary_az": "${PrimaryAZ}",
+          "secondary_az": "${SecondaryAZ}",
+          "system_subnet_ids": "${VpcStack.Outputs.SystemSubnetIds}",
+          "hpc_subnet_ids": "${VpcStack.Outputs.HpcSubnetIds}",
+          "storage_subnet_id": "${VpcStack.Outputs.StorageSubnetId}",
+          "fsx_dns_name": "${StorageStack.Outputs.FsxDnsName}",
+          "fsx_mount_name": "${StorageStack.Outputs.FsxMountName}",
+          "fsx_file_system_id": "${StorageStack.Outputs.FsxFileSystemId}",
+          "kms_key_arn": "${StorageStack.Outputs.KmsKeyArn}",
+          "placement_groups": "${PlacementGroupsStack.Outputs.AllPlacementGroups}"
+        }
+      Description: JSON metadata for all foundation resources
+
+Outputs:
+  #============================================================================
+  # VPC Outputs
+  #============================================================================
+  VpcId:
+    Description: VPC ID
+    Value: !GetAtt VpcStack.Outputs.VpcId
+    Export:
+      Name: !Sub skyhook-${Environment}-vpc-id
+
+  VpcCidr:
+    Description: VPC CIDR block
+    Value: !GetAtt VpcStack.Outputs.VpcCidr
+    Export:
+      Name: !Sub skyhook-${Environment}-vpc-cidr
+
+  SystemSubnetIds:
+    Description: System subnet IDs for EKS control plane
+    Value: !GetAtt VpcStack.Outputs.SystemSubnetIds
+    Export:
+      Name: !Sub skyhook-${Environment}-system-subnets
+
+  HpcSubnetIds:
+    Description: HPC subnet IDs for Karpenter GPU nodes
+    Value: !GetAtt VpcStack.Outputs.HpcSubnetIds
+    Export:
+      Name: !Sub skyhook-${Environment}-hpc-subnets
+
+  PublicSubnetIds:
+    Description: Public subnet IDs for NAT/ALB
+    Value: !GetAtt VpcStack.Outputs.PublicSubnetIds
+    Export:
+      Name: !Sub skyhook-${Environment}-public-subnets
+
+  #============================================================================
+  # Storage Outputs
+  #============================================================================
+  FsxFileSystemId:
+    Description: FSx for Lustre file system ID
+    Value: !GetAtt StorageStack.Outputs.FsxFileSystemId
+    Export:
+      Name: !Sub skyhook-${Environment}-fsx-id
+
+  FsxDnsName:
+    Description: FSx DNS name for mounting
+    Value: !GetAtt StorageStack.Outputs.FsxDnsName
+    Export:
+      Name: !Sub skyhook-${Environment}-fsx-dns
+
+  FsxMountName:
+    Description: FSx mount name
+    Value: !GetAtt StorageStack.Outputs.FsxMountName
+    Export:
+      Name: !Sub skyhook-${Environment}-fsx-mount
+
+  KmsKeyArn:
+    Description: Storage KMS key ARN
+    Value: !GetAtt StorageStack.Outputs.KmsKeyArn
+    Export:
+      Name: !Sub skyhook-${Environment}-kms-arn
+
+  FsxSecurityGroupId:
+    Description: FSx security group ID
+    Value: !GetAtt StorageStack.Outputs.FsxSecurityGroupId
+    Export:
+      Name: !Sub skyhook-${Environment}-fsx-sg
+
+  #============================================================================
+  # Placement Group Outputs
+  #============================================================================
+  PlacementGroupPrimaryAlpha:
+    Description: Primary placement group in primary AZ
+    Value: !GetAtt PlacementGroupsStack.Outputs.PlacementGroupPrimaryAlpha
+    Export:
+      Name: !Sub skyhook-${Environment}-cpg-alpha
+
+  AllPlacementGroups:
+    Description: All HPC placement groups
+    Value: !GetAtt PlacementGroupsStack.Outputs.AllPlacementGroups
+    Export:
+      Name: !Sub skyhook-${Environment}-cpg-all
+
+  #============================================================================
+  # Metadata
+  #============================================================================
+  FoundationStackName:
+    Description: Name of this foundation stack
+    Value: !Ref AWS::StackName
+    Export:
+      Name: !Sub skyhook-${Environment}-foundation-stack
+
+  FoundationMetadataPath:
+    Description: SSM parameter path for foundation metadata JSON
+    Value: !Sub /skyhook/${Environment}/foundation-metadata
+    Export:
+      Name: !Sub skyhook-${Environment}-metadata-path
+

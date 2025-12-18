@@ -1,0 +1,25 @@
+# K8sGPT Operator Helm Values
+# Chart: k8sgpt-operator
+# Repo: https://charts.k8sgpt.ai/
+# Version: 0.2.3
+
+controllerManager:
+  manager:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    serviceAccount:
+      create: true
+      name: k8sgpt-operator
+      # IRSA annotation - set via --set
+      annotations: {}
+
+metricsService:
+  enabled: true
+  type: ClusterIP
+  port: 8443
+

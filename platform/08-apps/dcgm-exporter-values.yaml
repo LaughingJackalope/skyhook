@@ -1,0 +1,43 @@
+# DCGM Exporter Helm Values
+# Chart: dcgm-exporter
+# Repo: https://nvidia.github.io/dcgm-exporter/helm-charts
+# Version: 3.4.2
+
+nodeSelector:
+  nvidia.com/gpu.present: "true"
+
+tolerations:
+  - key: nvidia.com/gpu
+    operator: Exists
+    effect: NoSchedule
+  - key: workload
+    value: hpc
+    effect: NoSchedule
+
+serviceMonitor:
+  enabled: true
+  interval: 15s
+  additionalLabels:
+    release: kube-prometheus-stack
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+arguments:
+  - "-f"
+  - "/etc/dcgm-exporter/dcp-metrics-included.csv"
+
+extraEnv:
+  - name: DCGM_EXPORTER_KUBERNETES_GPU_ID_TYPE
+    value: "device-name"
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9400"
+  prometheus.io/path: "/metrics"
+

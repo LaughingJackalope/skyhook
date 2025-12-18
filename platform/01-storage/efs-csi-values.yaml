@@ -1,0 +1,67 @@
+# AWS EFS CSI Driver Helm Values
+# Chart: aws-efs-csi-driver
+# Repo: https://kubernetes-sigs.github.io/aws-efs-csi-driver
+# Version: 2.5.5
+
+controller:
+  serviceAccount:
+    create: true
+    name: efs-csi-controller-sa
+    # IRSA annotation - set via cluster overlay or --set
+    annotations: {}
+  resources:
+    requests:
+      cpu: 10m
+      memory: 40Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+  deleteAccessPointRootDir: false
+
+node:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 40Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+  tolerateAllTaints: true
+
+sidecars:
+  livenessProbe:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 40Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  nodeDriverRegistrar:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 40Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  csiProvisioner:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 40Mi
+      limits:
+        cpu: 100m
+        memory: 256Mi
+
+# Storage class requires EFS filesystem ID - configure via cluster overlay
+storageClasses: []
+# Example:
+# - name: efs-sc
+#   parameters:
+#     provisioningMode: efs-ap
+#     fileSystemId: fs-xxxxxxxxx
+#     directoryPerms: "700"
+#   reclaimPolicy: Delete
+#   volumeBindingMode: Immediate
+

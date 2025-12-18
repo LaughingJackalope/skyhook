@@ -1,0 +1,142 @@
+# ==============================================================================
+# Skyhook Cluster Release Template
+# ==============================================================================
+#
+# This template creates an EKS cluster that references a pre-existing
+# foundation layer (VPC, subnets, etc.) created by the foundation stack.
+#
+# Variables (set via environment or Makefile):
+#   CLUSTER_NAME    - Cluster release name (e.g., skyhook-accel-usw2-v42)
+#   ENV             - Foundation environment (e.g., accel-usw2)
+#   VPC_ID          - Foundation VPC ID
+#   SYSTEM_SUBNETS  - Comma-separated system subnet IDs
+#   SSH_PUBLIC_KEY_PATH - Path to SSH public key (optional)
+#
+# Usage:
+#   make cluster-up ENV=accel-usw2 CLUSTER=v42
+
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: ${CLUSTER_NAME}
+  region: us-west-2
+  version: "1.34"
+  tags:
+    skyhook.io/environment: ${ENV}
+    skyhook.io/cluster-release: ${CLUSTER_NAME}
+    skyhook.io/managed-by: eksctl
+
+# Reference the foundation VPC instead of creating new
+vpc:
+  id: ${VPC_ID}
+  subnets:
+    private:
+      # System subnets from foundation layer
+      # eksctl will auto-discover AZs from subnet IDs
+      ${PRIMARY_AZ}:
+        id: ${SYSTEM_SUBNET_1}
+      ${SECONDARY_AZ}:
+        id: ${SYSTEM_SUBNET_2}
+      ${TERTIARY_AZ}:
+        id: ${SYSTEM_SUBNET_3}
+  clusterEndpoints:
+    publicAccess: true   # Enable for initial setup, can disable later
+    privateAccess: true
+
+# Disable auto mode to use Karpenter for compute
+autoModeConfig:
+  enabled: false
+
+# Enable OIDC for IRSA (Pod Identity)
+iam:
+  withOIDC: true
+  podIdentityAssociations:
+    - namespace: karpenter
+      serviceAccountName: karpenter
+      roleARN: arn:aws:iam::${ACCOUNT_ID}:role/${CLUSTER_NAME}-karpenter
+
+# Map Karpenter Node Role to system:nodes
+iamIdentityMappings:
+  - arn: arn:aws:iam::${ACCOUNT_ID}:role/${CLUSTER_NAME}-karpenter-node
+    groups:
+      - system:bootstrappers
+      - system:nodes
+    username: system:node:{{EC2PrivateDNSName}}
+
+# System node group only - Karpenter handles HPC nodes
+managedNodeGroups:
+  - name: system-pool
+    instanceType: m5.large  # Standard instance for system components
+    minSize: 5
+    maxSize: 10
+    desiredCapacity: 5
+    amiFamily: Bottlerocket  # Immutable OS optimized for containers
+    privateNetworking: true
+    subnets:
+      - ${SYSTEM_SUBNET_1}
+      - ${SYSTEM_SUBNET_2}
+    labels:
+      skyhook.io/node-role: system
+    tags:
+      skyhook.io/environment: ${ENV}
+      skyhook.io/node-pool: system
+    iam:
+      withAddonPolicies:
+        ebs: true
+        fsx: true
+        cloudWatch: true
+
+# EKS add-ons managed by eksctl
+addons:
+  - name: vpc-cni
+    version: latest
+    configurationValues: |
+      env:
+        ENABLE_PREFIX_DELEGATION: "true"
+        WARM_PREFIX_TARGET: "1"
+        WARM_IP_TARGET: "5"
+    podIdentityAssociations:
+      - namespace: kube-system
+        serviceAccountName: aws-node
+        permissionPolicyARNs:
+          - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+
+  - name: coredns
+    version: latest
+
+  - name: kube-proxy
+    version: latest
+
+  - name: eks-pod-identity-agent
+    version: latest
+
+  # EBS CSI for persistent volumes (non-FSx workloads)
+  - name: aws-ebs-csi-driver
+    version: latest
+    podIdentityAssociations:
+      - namespace: kube-system
+        serviceAccountName: ebs-csi-controller-sa
+        permissionPolicyARNs:
+          - arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy
+
+  # FSx CSI for Lustre access (mounts foundation FSx)
+  - name: aws-fsx-csi-driver
+    version: latest
+    podIdentityAssociations:
+      - namespace: kube-system
+        serviceAccountName: fsx-csi-controller-sa
+        permissionPolicyARNs:
+          - arn:aws:iam::aws:policy/AmazonFSxFullAccess
+
+# CloudWatch logging configuration
+cloudWatch:
+  clusterLogging:
+    enableTypes:
+      - api
+      - audit
+      - authenticator
+      - controllerManager
+      - scheduler
+    logRetentionInDays: 30
+

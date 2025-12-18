@@ -1,0 +1,20 @@
+# AWS TriggerAuthentication for KEDA
+# Uses IRSA (IAM Roles for Service Accounts) to authenticate with AWS services
+---
+apiVersion: keda.sh/v1alpha1
+kind: ClusterTriggerAuthentication
+metadata:
+  name: aws-irsa
+spec:
+  podIdentity:
+    provider: aws
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: aws-irsa
+  namespace: keda
+spec:
+  podIdentity:
+    provider: aws
+

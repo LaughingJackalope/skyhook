@@ -1,0 +1,100 @@
+site_name: Skyhook
+site_description: High-Performance Compute-as-a-Service for ML Research
+site_url: http://docs.skyhook.internal
+
+repo_name: Skyhook
+repo_url: https://github.com/your-org/skyhook  # Update with actual repo
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Platform:
+    - Overview: platform/overview.md
+    - Capabilities: platform/capabilities.md
+    - Architecture: platform/architecture.md
+    - Limits & Quotas: platform/limits.md
+  - Guides:
+    - Quick Start: guides/quick-start.md
+    - Checkpointing: guides/checkpointing.md
+    - Multi-Node Training: guides/multi-node.md
+    - Debugging: guides/debugging.md
+  - Reference:
+    - Instance Types: reference/instance-types.md
+    - Storage: reference/storage.md
+    - Environment Variables: reference/environment.md
+  - Internal:
+    - internal/index.md
+    - Design:
+      - internal/design/index.md
+      - Architecture Notes: internal/design/architecture-notes.md
+      - Implementation Plan: internal/design/implementation-plan.md
+      - Slide Content: internal/design/slide-content.md
+    - Runbooks:
+      - internal/runbooks/index.md
+      - Spot Recovery: internal/runbooks/spot-recovery.md
+      - Degraded Mode: internal/runbooks/degraded-mode.md
+      - Tenant Onboarding: internal/runbooks/tenant-onboarding.md
+    - ADRs:
+      - internal/adrs/index.md
+      - ADR-001 FSx over S3: internal/adrs/001-fsx-over-s3.md
+      - ADR-002 Kyverno Policies: internal/adrs/002-kyverno-policies.md
+      - ADR-003 SOCI Image Loading: internal/adrs/003-soci-image-loading.md
+    - Component Reference:
+      - internal/component-reference/index.md
+      - SkyPilot Infra: internal/component-reference/skypilot-infra.md
+      - Platform Base: internal/component-reference/platform-base.md
+      - Control Plane: internal/component-reference/control-plane.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-org/skyhook
+

@@ -1,0 +1,27 @@
+# Karpenter Helm Values
+# Chart: karpenter
+# Repo: oci://public.ecr.aws/karpenter
+# Version: 1.2.0
+
+# Required: Set these via --set or cluster overlay
+# settings:
+#   clusterName: ""
+#   clusterEndpoint: ""
+#   interruptionQueue: ""
+
+controller:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+
+webhook:
+  enabled: true
+
+serviceAccount:
+  # IRSA annotation - set via --set
+  annotations: {}
+

@@ -1,0 +1,39 @@
+[
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "accel-usw2"
+  },
+  {
+    "ParameterKey": "PrimaryAZ",
+    "ParameterValue": "us-west-2a"
+  },
+  {
+    "ParameterKey": "SecondaryAZ",
+    "ParameterValue": "us-west-2b"
+  },
+  {
+    "ParameterKey": "TertiaryAZ",
+    "ParameterValue": "us-west-2c"
+  },
+  {
+    "ParameterKey": "VpcCidr",
+    "ParameterValue": "10.0.0.0/16"
+  },
+  {
+    "ParameterKey": "FsxStorageCapacity",
+    "ParameterValue": "1200"
+  },
+  {
+    "ParameterKey": "FsxDeploymentType",
+    "ParameterValue": "PERSISTENT_2"
+  },
+  {
+    "ParameterKey": "FsxThroughput",
+    "ParameterValue": "125"
+  },
+  {
+    "ParameterKey": "DataRepositoryPath",
+    "ParameterValue": ""
+  }
+]
+

@@ -1,0 +1,43 @@
+sequenceDiagram
+    participant R as Researcher
+    participant SP as SkyPilot
+    participant K8S as Kubernetes API
+    participant KARP as Karpenter
+    participant EC2 as AWS EC2
+    participant NODE as GPU Node
+    
+    R->>SP: Submit Training Job<br/>sky launch task.yaml
+    SP->>K8S: Create Pod with<br/>resources.limits.efa=4<br/>resources.limits.gpu=8
+    
+    K8S->>K8S: Schedule Pod<br/>(Pending - No Node)
+    
+    K8S->>KARP: Trigger Provisioning<br/>Unschedulable Pod Event
+    
+    KARP->>KARP: Evaluate NodePool<br/>+ EC2NodeClass
+    
+    Note over KARP: Select Instance Type<br/>p5.48xlarge<br/>(EFA + 8 H100 GPUs)
+    
+    KARP->>EC2: Launch Instance<br/>+ User Data Script<br/>+ Launch Template<br/>(Placement Group)
+    
+    EC2->>NODE: Instance Starts
+    
+    Note over NODE: User Data Execution<br/>1. Stop kubelet<br/>2. RAID0 NVMe disks<br/>3. Mount to /mnt/local-scratch<br/>4. Start kubelet
+    
+    NODE->>NODE: Format NVMe RAID0<br/>mdadm --create /dev/md0
+    
+    NODE->>NODE: Mount FSx via CSI<br/>PersistentVolume binding
+    
+    NODE->>K8S: Register Node<br/>with EFA resources
+    
+    K8S->>NODE: Attach EFA ENIs<br/>via VPC CNI Plugin
+    
+    K8S->>NODE: Schedule Pod<br/>to Node
+    
+    NODE->>NODE: Kyverno Policy<br/>Inject EFA env vars<br/>FI_PROVIDER=efa
+    
+    NODE->>NODE: SOCI Snapshotter<br/>Lazy-load Container Image
+    
+    NODE->>SP: Pod Running
+    SP->>R: Job Started<br/>Training in Progress
+    
+    Note over NODE: Training uses:<br/>- FSx for data (1200 Gbps)<br/>- NVMe for checkpoints<br/>- EFA for multi-node sync

@@ -1,0 +1,9 @@
+# Skyhook Documentation Dependencies
+# Install: pip install -r requirements-docs.txt
+# Serve locally: mkdocs serve
+
+mkdocs>=1.5
+mkdocs-material>=9.0
+mkdocs-mermaid2-plugin>=1.0
+pymdown-extensions>=10.0
+

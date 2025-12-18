@@ -1,0 +1,68 @@
+# ExternalDNS Helm Values
+# Chart: external-dns
+# Repo: https://kubernetes-sigs.github.io/external-dns
+# Version: 1.15.0
+
+provider:
+  name: aws
+
+policy: upsert-only
+registry: txt
+
+serviceAccount:
+  create: true
+  name: external-dns
+  # IRSA annotation - set via --set
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+sources:
+  - service
+  - ingress
+
+interval: 1m
+triggerLoopOnEvent: true
+
+# Set via cluster overlay
+domainFilters: []
+zoneIdFilters: []
+zoneType: ""
+
+txtPrefix: "externaldns-"
+
+logLevel: info
+logFormat: json
+
+nodeSelector:
+  kubernetes.io/os: linux
+
+priorityClassName: ""
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - external-dns
+          topologyKey: kubernetes.io/hostname
+
+serviceMonitor:
+  enabled: false
+  namespace: external-dns
+  interval: 30s
+  additionalLabels:
+    release: kube-prometheus-stack
+

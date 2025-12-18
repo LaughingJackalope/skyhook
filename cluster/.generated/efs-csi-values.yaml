@@ -1,0 +1,4 @@
+controller:
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::751442549699:role/skyhook-accel-usw2-v69-efs-csi

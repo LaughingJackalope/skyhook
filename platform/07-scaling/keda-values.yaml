@@ -1,0 +1,66 @@
+# KEDA Helm Values
+# Chart: keda
+# Repo: https://kedacore.github.io/charts
+# Version: 2.14.0
+
+operator:
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+metricsServer:
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+webhooks:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+serviceAccount:
+  create: true
+  name: keda-operator
+  # IRSA annotation - set via --set
+  annotations: {}
+
+prometheus:
+  metricServer:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: keda
+  operator:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: keda
+
+podDisruptionBudget:
+  operator:
+    minAvailable: 1
+  metricServer:
+    minAvailable: 1
+
+logging:
+  operator:
+    level: info
+    format: json
+  metricServer:
+    level: "0"
+

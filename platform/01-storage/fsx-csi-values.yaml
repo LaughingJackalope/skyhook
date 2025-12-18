@@ -1,0 +1,75 @@
+# AWS FSx CSI Driver Helm Values
+# Chart: aws-fsx-csi-driver
+# Repo: https://kubernetes-sigs.github.io/aws-fsx-csi-driver
+# Version: 1.6.1
+
+controller:
+  replicaCount: 2
+  serviceAccount:
+    create: true
+    name: fsx-csi-controller-sa
+    # IRSA annotation - set via cluster overlay or --set
+    annotations: {}
+  resources:
+    requests:
+      cpu: 10m
+      memory: 40Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: aws-fsx-csi-driver
+
+node:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 40Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+  tolerateAllTaints: true
+
+sidecars:
+  livenessProbe:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 40Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  nodeDriverRegistrar:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 40Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  provisioner:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 40Mi
+      limits:
+        cpu: 100m
+        memory: 256Mi
+
+# Storage classes for FSx Lustre - configure via cluster overlay
+storageClasses: []
+# Example:
+# - name: fsx-lustre-scratch
+#   parameters:
+#     subnetId: subnet-xxxxxxxxx
+#     securityGroupIds: sg-xxxxxxxxx
+#     deploymentType: SCRATCH_2
+#     autoImportPolicy: NEW_CHANGED
+#   reclaimPolicy: Delete
+#   volumeBindingMode: Immediate
+

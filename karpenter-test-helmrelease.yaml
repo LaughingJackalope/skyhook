@@ -1,0 +1,38 @@
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: karpenter-test
+  namespace: karpenter-test
+spec:
+  interval: 5m
+  chart:
+    spec:
+      chart: karpenter
+      version: "v0.32.1" # Latest stable version at the time of this test
+      sourceRef:
+        kind: HelmRepository
+        name: karpenter
+        namespace: karpenter-test
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    serviceAccount:
+      create: true
+      name: karpenter-test
+    settings:
+      aws:
+        clusterName: "skyhook-accel-usw2-v42"
+        interruptionQueueName: "karpenter-test"
+    controller:
+      resources:
+        requests:
+          cpu: 1
+          memory: 1Gi
+        limits:
+          cpu: 1
+          memory: 1Gi

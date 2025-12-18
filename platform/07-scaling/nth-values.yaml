@@ -1,0 +1,60 @@
+# AWS Node Termination Handler Helm Values
+# Chart: aws-node-termination-handler
+# Repo: https://aws.github.io/eks-charts
+# Version: 0.21.0
+
+# SQS Mode Configuration
+# queueURL set via --set-string queueURL=${QUEUE_URL}
+queueURL: ""
+
+enableSqsTerminationDraining: true
+enableSpotInterruptionDraining: false
+enableRebalanceMonitoring: true
+enableRebalanceDraining: true
+enableScheduledEventDraining: true
+
+deleteLocalData: true
+ignoreDaemonSets: true
+podTerminationGracePeriod: 120
+nodeTerminationGracePeriod: 180
+taintNode: true
+cordonOnly: false
+
+serviceAccount:
+  create: true
+  name: aws-node-termination-handler
+  # IRSA annotation - set via --set
+  annotations: {}
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+priorityClassName: system-cluster-critical
+webhookURL: ""
+jsonLogging: true
+emitKubernetesEvents: true
+
+nodeSelector:
+  kubernetes.io/os: linux
+
+tolerations:
+  - operator: Exists
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - aws-node-termination-handler
+          topologyKey: kubernetes.io/hostname
+

@@ -1,0 +1,59 @@
+graph TB
+    subgraph "Application Layer"
+        APP[Training Code<br/>PyTorch DDP]
+    end
+    
+    subgraph "Communication Library"
+        NCCL[NCCL<br/>Collective Operations<br/>All-Reduce, All-Gather]
+    end
+    
+    subgraph "Fabric Interface"
+        LIBFABRIC[libfabric<br/>Fabric Abstraction]
+        EFA_PROVIDER[EFA Provider<br/>FI_PROVIDER=efa]
+    end
+    
+    subgraph "Network Stack Comparison"
+        direction LR
+        
+        subgraph "Traditional TCP Path"
+            TCP[TCP/IP Stack]
+            KERNEL[Kernel Space<br/>Context Switches]
+            NIC_TCP[Standard NIC]
+        end
+        
+        subgraph "EFA OS-Bypass Path"
+            SRD[SRD Protocol<br/>Scalable Reliable<br/>Datagram]
+            RDMA[RDMA Operations<br/>Direct Memory Access]
+            EFA_HW[EFA Hardware<br/>Network Interface]
+        end
+    end
+    
+    subgraph "Physical Network"
+        AWS_NET[AWS Network Fabric<br/>ECMP Multi-path<br/>400 Gbps per EFA]
+    end
+    
+    APP -->|Gradient Sync| NCCL
+    NCCL -->|Transport| LIBFABRIC
+    LIBFABRIC --> EFA_PROVIDER
+    
+    EFA_PROVIDER -.->|Legacy Fallback<br/>10x Slower| TCP
+    EFA_PROVIDER -->|High Performance| SRD
+    
+    TCP --> KERNEL
+    KERNEL --> NIC_TCP
+    NIC_TCP --> AWS_NET
+    
+    SRD --> RDMA
+    RDMA -->|Zero-copy<br/>Bypass Kernel| EFA_HW
+    EFA_HW -->|Direct Access| AWS_NET
+    
+    style SRD fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style RDMA fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    style EFA_HW fill:#85C88A,stroke:#2D5F3E,stroke-width:3px
+    
+    style TCP fill:#F8D7DA
+    style KERNEL fill:#F8D7DA
+    style NIC_TCP fill:#F8D7DA
+    
+    style NCCL fill:#4A90E2
+    style APP fill:#4A90E2

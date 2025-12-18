@@ -1,0 +1,235 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  VPC Endpoints for Skyhook foundation layer.
+  Reduces NAT traffic costs and latency for AWS service access.
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Environment identifier (e.g., accel-usw2)
+
+  VpcId:
+    Type: String
+    Description: VPC ID from vpc.yaml stack
+
+  PrivateRouteTableIds:
+    Type: CommaDelimitedList
+    Description: Private route table IDs for gateway endpoint associations
+
+  SystemSubnetIds:
+    Type: CommaDelimitedList
+    Description: System subnet IDs for interface endpoints
+
+Resources:
+  #============================================================================
+  # Security Group for Interface Endpoints
+  #============================================================================
+  EndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub skyhook-${Environment}-vpc-endpoints-sg
+      GroupDescription: Security group for VPC interface endpoints
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "10.0.0.0/16"
+          Description: HTTPS from VPC
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-vpc-endpoints-sg
+
+  #============================================================================
+  # Gateway Endpoints (free, route-table based)
+  #============================================================================
+  
+  # S3 Gateway Endpoint - checkpoint/data access without NAT
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      VpcEndpointType: Gateway
+      RouteTableIds: !Ref PrivateRouteTableIds
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAll
+            Effect: Allow
+            Principal: "*"
+            Action:
+              - "s3:*"
+            Resource:
+              - "*"
+
+  # DynamoDB Gateway Endpoint - for Terraform state, etc.
+  DynamoDBEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.dynamodb
+      VpcEndpointType: Gateway
+      RouteTableIds: !Ref PrivateRouteTableIds
+
+  #============================================================================
+  # Interface Endpoints (cost per hour + data, but lower latency)
+  #============================================================================
+
+  # ECR API Endpoint - container registry metadata
+  EcrApiEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecr.api
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SystemSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # ECR DKR Endpoint - container image pulls
+  EcrDkrEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ecr.dkr
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SystemSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # STS Endpoint - IRSA token exchange (critical for pod identity)
+  StsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.sts
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SystemSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # CloudWatch Logs Endpoint - log shipping without NAT
+  LogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.logs
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SystemSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # CloudWatch Monitoring Endpoint - metrics shipping
+  MonitoringEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.monitoring
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SystemSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # SSM Endpoint - parameter store access
+  SsmEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SystemSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # SSM Messages Endpoint - for SSM Session Manager
+  SsmMessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssmmessages
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SystemSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # EC2 Messages Endpoint - for SSM agent communication
+  Ec2MessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ec2messages
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SystemSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # EC2 Endpoint - for Karpenter EC2 API calls
+  Ec2Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ec2
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SystemSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # SQS Endpoint - for Node Termination Handler
+  SqsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.sqs
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SystemSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # Autoscaling Endpoint - for NTH lifecycle hooks
+  AutoscalingEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.autoscaling
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SystemSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # EKS Endpoint - for kubectl API access (private endpoint)
+  EksEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.eks
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SystemSubnetIds
+      SecurityGroupIds:
+        - !Ref EndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+Outputs:
+  EndpointSecurityGroupId:
+    Description: Security group ID for VPC endpoints
+    Value: !Ref EndpointSecurityGroup
+
+  S3EndpointId:
+    Description: S3 gateway endpoint ID
+    Value: !Ref S3Endpoint
+
+  EcrApiEndpointId:
+    Description: ECR API endpoint ID
+    Value: !Ref EcrApiEndpoint
+

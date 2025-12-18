@@ -1,0 +1,1219 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Per-cluster IAM resources for Skyhook.
+  IRSA roles for Karpenter, NTH, Fluent Bit, and other controllers.
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Foundation environment identifier (e.g., accel-usw2)
+
+  ClusterName:
+    Type: String
+    Description: Full cluster name (e.g., skyhook-accel-usw2-v42)
+
+  OidcId:
+    Type: String
+    Description: EKS OIDC provider ID (extracted from issuer URL)
+    Default: ""
+
+Conditions:
+  HasOidcId: !Not [!Equals [!Ref OidcId, ""]]
+
+Resources:
+  #============================================================================
+  # OIDC Provider (created by eksctl, but we need the ARN)
+  #============================================================================
+  # Note: eksctl creates the OIDC provider. We reference it by constructing the ARN.
+
+  #============================================================================
+  # Karpenter Controller Role
+  #============================================================================
+  KarpenterControllerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ClusterName}-karpenter
+      AssumeRolePolicyDocument:
+        Fn::If:
+          - HasOidcId
+          - Fn::Sub:
+              - |
+                {
+                  "Version": "2012-10-17",
+                  "Statement": [
+                    {
+                      "Effect": "Allow",
+                      "Principal": {
+                        "Service": "pods.eks.amazonaws.com"
+                      },
+                      "Action": [
+                        "sts:AssumeRole",
+                        "sts:TagSession"
+                      ]
+                    },
+                    {
+                      "Effect": "Allow",
+                      "Principal": {
+                        "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}"
+                      },
+                      "Action": "sts:AssumeRoleWithWebIdentity",
+                      "Condition": {
+                        "StringEquals": {
+                          "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:sub": "system:serviceaccount:karpenter:karpenter",
+                          "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:aud": "sts.amazonaws.com"
+                        }
+                      }
+                    }
+                  ]
+                }
+              - {}
+          - Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Principal:
+                  Service: pods.eks.amazonaws.com
+                Action:
+                  - sts:AssumeRole
+                  - sts:TagSession
+      Policies:
+        - PolicyName: KarpenterControllerPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # EC2 permissions for node provisioning
+              - Sid: EC2NodeManagement
+                Effect: Allow
+                Action:
+                  - ec2:CreateFleet
+                  - ec2:CreateLaunchTemplate
+                  - ec2:CreateTags
+                  - ec2:DeleteLaunchTemplate
+                  - ec2:DescribeAvailabilityZones
+                  - ec2:DescribeImages
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInstanceTypeOfferings
+                  - ec2:DescribeInstanceTypes
+                  - ec2:DescribeLaunchTemplates
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSpotPriceHistory
+                  - ec2:DescribeSubnets
+                  - ec2:RunInstances
+                  - ec2:TerminateInstances
+                Resource: "*"
+              # IAM permissions for instance profiles
+              - Sid: IAMPassRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/*
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ec2.amazonaws.com
+              # SSM for AMI discovery
+              - Sid: SSMGetParameter
+                Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub arn:aws:ssm:${AWS::Region}::parameter/aws/service/*
+              # Pricing API for spot instance selection
+              - Sid: PricingAPI
+                Effect: Allow
+                Action: pricing:GetProducts
+                Resource: "*"
+              # EKS for cluster discovery
+              - Sid: EKSDescribe
+                Effect: Allow
+                Action:
+                  - eks:DescribeCluster
+                Resource: !Sub arn:aws:eks:${AWS::Region}:${AWS::AccountId}:cluster/${ClusterName}
+              # SQS for spot interruption handling
+              - Sid: SQSInterruptionQueue
+                Effect: Allow
+                Action:
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:GetQueueUrl
+                  - sqs:ReceiveMessage
+                Resource: !Sub arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:${ClusterName}-*
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/cluster
+          Value: !Ref ClusterName
+
+  #============================================================================
+  # Node Termination Handler Role
+  #============================================================================
+  NodeTerminationHandlerRole:
+    Type: AWS::IAM::Role
+    Condition: HasOidcId
+    Properties:
+      RoleName: !Sub ${ClusterName}-nth
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}"
+                  },
+                  "Action": "sts:AssumeRoleWithWebIdentity",
+                  "Condition": {
+                    "StringEquals": {
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:sub": "system:serviceaccount:kube-system:aws-node-termination-handler",
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:aud": "sts.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          - {}
+      Policies:
+        - PolicyName: NodeTerminationHandlerPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # SQS permissions for event queue
+              - Sid: SQSAccess
+                Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !Sub arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:skyhook-${Environment}-*
+              # EC2 for instance correlation
+              - Sid: EC2Describe
+                Effect: Allow
+                Action: ec2:DescribeInstances
+                Resource: "*"
+              # ASG lifecycle hooks
+              - Sid: ASGLifecycle
+                Effect: Allow
+                Action:
+                  - autoscaling:CompleteLifecycleAction
+                  - autoscaling:DescribeAutoScalingInstances
+                  - autoscaling:DescribeTags
+                Resource: "*"
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/cluster
+          Value: !Ref ClusterName
+
+  #============================================================================
+  # Fluent Bit Role (CloudWatch Logs)
+  #============================================================================
+  FluentBitRole:
+    Type: AWS::IAM::Role
+    Condition: HasOidcId
+    Properties:
+      RoleName: !Sub ${ClusterName}-fluent-bit
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}"
+                  },
+                  "Action": "sts:AssumeRoleWithWebIdentity",
+                  "Condition": {
+                    "StringEquals": {
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:sub": "system:serviceaccount:logging:fluent-bit",
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:aud": "sts.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          - {}
+      Policies:
+        - PolicyName: FluentBitPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/skyhook/${Environment}/*
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/eks/${ClusterName}/*
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/cluster
+          Value: !Ref ClusterName
+
+  #============================================================================
+  # External DNS Role
+  #============================================================================
+  ExternalDnsRole:
+    Type: AWS::IAM::Role
+    Condition: HasOidcId
+    Properties:
+      RoleName: !Sub ${ClusterName}-external-dns
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}"
+                  },
+                  "Action": "sts:AssumeRoleWithWebIdentity",
+                  "Condition": {
+                    "StringEquals": {
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:sub": "system:serviceaccount:external-dns:external-dns",
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:aud": "sts.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          - {}
+      Policies:
+        - PolicyName: ExternalDnsPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Route53Changes
+                Effect: Allow
+                Action: route53:ChangeResourceRecordSets
+                Resource: arn:aws:route53:::hostedzone/*
+              - Sid: Route53List
+                Effect: Allow
+                Action:
+                  - route53:ListHostedZones
+                  - route53:ListResourceRecordSets
+                Resource: "*"
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/cluster
+          Value: !Ref ClusterName
+
+  #============================================================================
+  # K8sGPT Role (Amazon Bedrock)
+  # AI-powered cluster diagnostics - incubating component
+  #============================================================================
+  K8sGPTRole:
+    Type: AWS::IAM::Role
+    Condition: HasOidcId
+    Properties:
+      RoleName: !Sub ${ClusterName}-k8sgpt
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}"
+                  },
+                  "Action": "sts:AssumeRoleWithWebIdentity",
+                  "Condition": {
+                    "StringEquals": {
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:sub": "system:serviceaccount:k8sgpt-operator-system:k8sgpt",
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:aud": "sts.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          - {}
+      Policies:
+        - PolicyName: K8sGPTBedrockPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Bedrock model invocation
+              - Sid: BedrockInvoke
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  # Claude 3 Sonnet model
+                  - !Sub arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0
+                  # Allow cross-region inference if needed
+                  - !Sub arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0
+                  - !Sub arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0
+              # List models for validation
+              - Sid: BedrockList
+                Effect: Allow
+                Action:
+                  - bedrock:ListFoundationModels
+                  - bedrock:GetFoundationModel
+                Resource: "*"
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/cluster
+          Value: !Ref ClusterName
+        - Key: skyhook.io/component
+          Value: k8sgpt
+        - Key: skyhook.io/tier
+          Value: incubating
+
+  #============================================================================
+  # KEDA Role (Event-Driven Autoscaling)
+  # Read-only access to SQS, CloudWatch, and Kinesis for scaling decisions
+  #============================================================================
+  KedaRole:
+    Type: AWS::IAM::Role
+    Condition: HasOidcId
+    Properties:
+      RoleName: !Sub ${ClusterName}-keda
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}"
+                  },
+                  "Action": "sts:AssumeRoleWithWebIdentity",
+                  "Condition": {
+                    "StringEquals": {
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:sub": "system:serviceaccount:keda:keda-operator",
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:aud": "sts.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          - {}
+      Policies:
+        - PolicyName: KedaScalerPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # SQS read-only for queue-based scaling
+              - Sid: SQSScaler
+                Effect: Allow
+                Action:
+                  - sqs:GetQueueAttributes
+                  - sqs:GetQueueUrl
+                Resource: !Sub arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:*
+              # CloudWatch read-only for metrics-based scaling
+              - Sid: CloudWatchScaler
+                Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                Resource: "*"
+              # Kinesis read-only for stream-based scaling
+              - Sid: KinesisScaler
+                Effect: Allow
+                Action:
+                  - kinesis:DescribeStream
+                  - kinesis:DescribeStreamSummary
+                  - kinesis:ListShards
+                  - kinesis:GetShardIterator
+                Resource: !Sub arn:aws:kinesis:${AWS::Region}:${AWS::AccountId}:stream/*
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/cluster
+          Value: !Ref ClusterName
+        - Key: skyhook.io/component
+          Value: keda
+
+  #============================================================================
+  # EBS CSI Controller Role
+  # Manages EBS volume lifecycle for persistent volumes
+  #============================================================================
+  EbsCsiControllerRole:
+    Type: AWS::IAM::Role
+    Condition: HasOidcId
+    Properties:
+      RoleName: !Sub ${ClusterName}-ebs-csi
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}"
+                  },
+                  "Action": "sts:AssumeRoleWithWebIdentity",
+                  "Condition": {
+                    "StringEquals": {
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:sub": "system:serviceaccount:kube-system:ebs-csi-controller-sa",
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:aud": "sts.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          - {}
+      Policies:
+        - PolicyName: EbsCsiControllerPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: EBSVolumeManagement
+                Effect: Allow
+                Action:
+                  - ec2:CreateSnapshot
+                  - ec2:AttachVolume
+                  - ec2:DetachVolume
+                  - ec2:ModifyVolume
+                  - ec2:DescribeAvailabilityZones
+                  - ec2:DescribeInstances
+                  - ec2:DescribeSnapshots
+                  - ec2:DescribeTags
+                  - ec2:DescribeVolumes
+                  - ec2:DescribeVolumesModifications
+                Resource: "*"
+              - Sid: EBSVolumeCreate
+                Effect: Allow
+                Action:
+                  - ec2:CreateVolume
+                Resource: "*"
+                Condition:
+                  StringLike:
+                    aws:RequestTag/ebs.csi.aws.com/cluster: "true"
+              - Sid: EBSVolumeDelete
+                Effect: Allow
+                Action:
+                  - ec2:DeleteVolume
+                Resource: "*"
+                Condition:
+                  StringLike:
+                    ec2:ResourceTag/ebs.csi.aws.com/cluster: "true"
+              - Sid: EBSSnapshotDelete
+                Effect: Allow
+                Action:
+                  - ec2:DeleteSnapshot
+                Resource: "*"
+                Condition:
+                  StringLike:
+                    ec2:ResourceTag/CSIVolumeSnapshotName: "*"
+              - Sid: EBSTagging
+                Effect: Allow
+                Action:
+                  - ec2:CreateTags
+                Resource:
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:snapshot/*
+                Condition:
+                  StringEquals:
+                    ec2:CreateAction:
+                      - CreateVolume
+                      - CreateSnapshot
+              - Sid: KMSAccess
+                Effect: Allow
+                Action:
+                  - kms:CreateGrant
+                  - kms:ListGrants
+                  - kms:RevokeGrant
+                Resource: "*"
+                Condition:
+                  Bool:
+                    kms:GrantIsForAWSResource: "true"
+              - Sid: KMSEncryption
+                Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:ReEncrypt*
+                  - kms:GenerateDataKey*
+                  - kms:DescribeKey
+                Resource: "*"
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/cluster
+          Value: !Ref ClusterName
+        - Key: skyhook.io/component
+          Value: ebs-csi
+
+  #============================================================================
+  # EFS CSI Controller Role
+  # Manages EFS access points and mounts
+  #============================================================================
+  EfsCsiControllerRole:
+    Type: AWS::IAM::Role
+    Condition: HasOidcId
+    Properties:
+      RoleName: !Sub ${ClusterName}-efs-csi
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}"
+                  },
+                  "Action": "sts:AssumeRoleWithWebIdentity",
+                  "Condition": {
+                    "StringEquals": {
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:sub": "system:serviceaccount:kube-system:efs-csi-controller-sa",
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:aud": "sts.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          - {}
+      Policies:
+        - PolicyName: EfsCsiControllerPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: EFSDescribe
+                Effect: Allow
+                Action:
+                  - elasticfilesystem:DescribeAccessPoints
+                  - elasticfilesystem:DescribeFileSystems
+                  - elasticfilesystem:DescribeMountTargets
+                Resource: "*"
+              - Sid: EFSAccessPoints
+                Effect: Allow
+                Action:
+                  - elasticfilesystem:CreateAccessPoint
+                Resource: "*"
+                Condition:
+                  StringLike:
+                    aws:RequestTag/efs.csi.aws.com/cluster: "true"
+              - Sid: EFSAccessPointDelete
+                Effect: Allow
+                Action:
+                  - elasticfilesystem:DeleteAccessPoint
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    aws:ResourceTag/efs.csi.aws.com/cluster: "true"
+              - Sid: EFSTagging
+                Effect: Allow
+                Action:
+                  - elasticfilesystem:TagResource
+                Resource: "*"
+                Condition:
+                  StringLike:
+                    aws:RequestTag/efs.csi.aws.com/cluster: "true"
+              - Sid: EC2Describe
+                Effect: Allow
+                Action:
+                  - ec2:DescribeAvailabilityZones
+                Resource: "*"
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/cluster
+          Value: !Ref ClusterName
+        - Key: skyhook.io/component
+          Value: efs-csi
+
+  #============================================================================
+  # FSx CSI Controller Role
+  # Manages FSx for Lustre filesystems
+  #============================================================================
+  FsxCsiControllerRole:
+    Type: AWS::IAM::Role
+    Condition: HasOidcId
+    Properties:
+      RoleName: !Sub ${ClusterName}-fsx-csi
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}"
+                  },
+                  "Action": "sts:AssumeRoleWithWebIdentity",
+                  "Condition": {
+                    "StringEquals": {
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:sub": "system:serviceaccount:kube-system:fsx-csi-controller-sa",
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:aud": "sts.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          - {}
+      Policies:
+        - PolicyName: FsxCsiControllerPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: FSxManagement
+                Effect: Allow
+                Action:
+                  - fsx:CreateFileSystem
+                  - fsx:DeleteFileSystem
+                  - fsx:DescribeFileSystems
+                  - fsx:TagResource
+                  - fsx:UpdateFileSystem
+                Resource: "*"
+              - Sid: FSxDataRepo
+                Effect: Allow
+                Action:
+                  - fsx:CreateDataRepositoryAssociation
+                  - fsx:DeleteDataRepositoryAssociation
+                  - fsx:DescribeDataRepositoryAssociations
+                Resource: "*"
+              - Sid: EC2ForFSx
+                Effect: Allow
+                Action:
+                  - ec2:DescribeNetworkInterfaceAttribute
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVpcs
+                Resource: "*"
+              - Sid: IAMServiceLinkedRole
+                Effect: Allow
+                Action:
+                  - iam:CreateServiceLinkedRole
+                  - iam:AttachRolePolicy
+                  - iam:PutRolePolicy
+                Resource: arn:aws:iam::*:role/aws-service-role/s3.data-source.lustre.fsx.amazonaws.com/*
+              - Sid: S3ForDataRepo
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: "*"
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/cluster
+          Value: !Ref ClusterName
+        - Key: skyhook.io/component
+          Value: fsx-csi
+
+  #============================================================================
+  # Secrets Store CSI Driver Role
+  # Access to AWS Secrets Manager and SSM Parameter Store
+  #============================================================================
+  SecretsStoreCsiRole:
+    Type: AWS::IAM::Role
+    Condition: HasOidcId
+    Properties:
+      RoleName: !Sub ${ClusterName}-secrets-store-csi
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}"
+                  },
+                  "Action": "sts:AssumeRoleWithWebIdentity",
+                  "Condition": {
+                    "StringEquals": {
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:sub": "system:serviceaccount:kube-system:secrets-store-csi-driver",
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:aud": "sts.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          - {}
+      Policies:
+        - PolicyName: SecretsStoreCsiPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: SecretsManagerAccess
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:skyhook/${Environment}/*
+              - Sid: SSMParameterAccess
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/skyhook/${Environment}/*
+              - Sid: KMSDecrypt
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - kms:DescribeKey
+                Resource: "*"
+                Condition:
+                  StringLike:
+                    kms:ViaService:
+                      - !Sub secretsmanager.${AWS::Region}.amazonaws.com
+                      - !Sub ssm.${AWS::Region}.amazonaws.com
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/cluster
+          Value: !Ref ClusterName
+        - Key: skyhook.io/component
+          Value: secrets-store-csi
+
+  #============================================================================
+  # AWS Load Balancer Controller Role
+  # Manages ALB/NLB for Kubernetes Ingress and Services
+  #============================================================================
+  LoadBalancerControllerRole:
+    Type: AWS::IAM::Role
+    Condition: HasOidcId
+    Properties:
+      RoleName: !Sub ${ClusterName}-aws-lb-controller
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+          - |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}"
+                  },
+                  "Action": "sts:AssumeRoleWithWebIdentity",
+                  "Condition": {
+                    "StringEquals": {
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:sub": "system:serviceaccount:kube-system:aws-load-balancer-controller",
+                      "oidc.eks.${AWS::Region}.amazonaws.com/id/${OidcId}:aud": "sts.amazonaws.com"
+                    }
+                  }
+                }
+              ]
+            }
+          - {}
+      Policies:
+        - PolicyName: LoadBalancerControllerPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: IAMServiceLinkedRole
+                Effect: Allow
+                Action:
+                  - iam:CreateServiceLinkedRole
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    iam:AWSServiceName: elasticloadbalancing.amazonaws.com
+              - Sid: EC2Permissions
+                Effect: Allow
+                Action:
+                  - ec2:DescribeAccountAttributes
+                  - ec2:DescribeAddresses
+                  - ec2:DescribeAvailabilityZones
+                  - ec2:DescribeInternetGateways
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeVpcPeeringConnections
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeInstances
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeTags
+                  - ec2:GetCoipPoolUsage
+                  - ec2:DescribeCoipPools
+                Resource: "*"
+              - Sid: EC2SecurityGroups
+                Effect: Allow
+                Action:
+                  - ec2:CreateSecurityGroup
+                Resource: "*"
+              - Sid: EC2SecurityGroupTags
+                Effect: Allow
+                Action:
+                  - ec2:CreateTags
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/*
+                Condition:
+                  StringEquals:
+                    ec2:CreateAction: CreateSecurityGroup
+                  "Null":
+                    aws:RequestTag/elbv2.k8s.aws/cluster: "false"
+              - Sid: EC2SecurityGroupTagsModify
+                Effect: Allow
+                Action:
+                  - ec2:CreateTags
+                  - ec2:DeleteTags
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/*
+                Condition:
+                  "Null":
+                    aws:RequestTag/elbv2.k8s.aws/cluster: "true"
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: "false"
+              - Sid: EC2SecurityGroupRules
+                Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupIngress
+                  - ec2:DeleteSecurityGroup
+                Resource: "*"
+                Condition:
+                  "Null":
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: "false"
+              - Sid: ELBManagement
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:CreateLoadBalancer
+                  - elasticloadbalancing:CreateTargetGroup
+                Resource: "*"
+                Condition:
+                  "Null":
+                    aws:RequestTag/elbv2.k8s.aws/cluster: "false"
+              - Sid: ELBTagging
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:AddTags
+                  - elasticloadbalancing:RemoveTags
+                Resource:
+                  - !Sub arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:targetgroup/*/*
+                  - !Sub arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:loadbalancer/net/*/*
+                  - !Sub arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:loadbalancer/app/*/*
+                Condition:
+                  "Null":
+                    aws:RequestTag/elbv2.k8s.aws/cluster: "true"
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: "false"
+              - Sid: ELBListenerTagging
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:AddTags
+                  - elasticloadbalancing:RemoveTags
+                Resource:
+                  - !Sub arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:listener/net/*/*/*
+                  - !Sub arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:listener/app/*/*/*
+                  - !Sub arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:listener-rule/net/*/*/*
+                  - !Sub arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:listener-rule/app/*/*/*
+              - Sid: ELBModify
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:ModifyLoadBalancerAttributes
+                  - elasticloadbalancing:SetIpAddressType
+                  - elasticloadbalancing:SetSecurityGroups
+                  - elasticloadbalancing:SetSubnets
+                  - elasticloadbalancing:DeleteLoadBalancer
+                  - elasticloadbalancing:ModifyTargetGroup
+                  - elasticloadbalancing:ModifyTargetGroupAttributes
+                  - elasticloadbalancing:DeleteTargetGroup
+                Resource: "*"
+                Condition:
+                  "Null":
+                    aws:ResourceTag/elbv2.k8s.aws/cluster: "false"
+              - Sid: ELBTargetRegistration
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:RegisterTargets
+                  - elasticloadbalancing:DeregisterTargets
+                Resource: !Sub arn:aws:elasticloadbalancing:${AWS::Region}:${AWS::AccountId}:targetgroup/*/*
+              - Sid: ELBListenerManagement
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:SetWebAcl
+                  - elasticloadbalancing:ModifyListener
+                  - elasticloadbalancing:AddListenerCertificates
+                  - elasticloadbalancing:RemoveListenerCertificates
+                  - elasticloadbalancing:ModifyRule
+                Resource: "*"
+              - Sid: ELBDescribe
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - elasticloadbalancing:DescribeLoadBalancerAttributes
+                  - elasticloadbalancing:DescribeListeners
+                  - elasticloadbalancing:DescribeListenerCertificates
+                  - elasticloadbalancing:DescribeSSLPolicies
+                  - elasticloadbalancing:DescribeRules
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:DescribeTargetGroupAttributes
+                  - elasticloadbalancing:DescribeTargetHealth
+                  - elasticloadbalancing:DescribeTags
+                  - elasticloadbalancing:DescribeTrustStores
+                Resource: "*"
+              - Sid: ELBListenerCreate
+                Effect: Allow
+                Action:
+                  - elasticloadbalancing:CreateListener
+                  - elasticloadbalancing:DeleteListener
+                  - elasticloadbalancing:CreateRule
+                  - elasticloadbalancing:DeleteRule
+                Resource: "*"
+              - Sid: CognitoForALB
+                Effect: Allow
+                Action:
+                  - cognito-idp:DescribeUserPoolClient
+                Resource: "*"
+              - Sid: ACMForALB
+                Effect: Allow
+                Action:
+                  - acm:ListCertificates
+                  - acm:DescribeCertificate
+                Resource: "*"
+              - Sid: WAFv2ForALB
+                Effect: Allow
+                Action:
+                  - wafv2:GetWebACL
+                  - wafv2:GetWebACLForResource
+                  - wafv2:AssociateWebACL
+                  - wafv2:DisassociateWebACL
+                Resource: "*"
+              - Sid: ShieldForALB
+                Effect: Allow
+                Action:
+                  - shield:GetSubscriptionState
+                  - shield:DescribeProtection
+                  - shield:CreateProtection
+                  - shield:DeleteProtection
+                Resource: "*"
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/cluster
+          Value: !Ref ClusterName
+        - Key: skyhook.io/component
+          Value: aws-load-balancer-controller
+
+  #============================================================================
+  # Karpenter Node Instance Role
+  # Nodes launched by Karpenter assume this role
+  #============================================================================
+  KarpenterNodeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${ClusterName}-karpenter-node
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+        - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        # FSx access for Lustre mounts
+        - PolicyName: FSxAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - fsx:DescribeFileSystems
+                Resource: "*"
+        # SSM parameter access for bootstrap scripts
+        - PolicyName: SSMParameters
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/skyhook/${Environment}/*
+      Tags:
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/cluster
+          Value: !Ref ClusterName
+
+  KarpenterNodeInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub ${ClusterName}-karpenter-node
+      Roles:
+        - !Ref KarpenterNodeRole
+
+  #============================================================================
+  # SSM Parameters for role ARNs
+  #============================================================================
+  KarpenterRoleArnParameter:
+    Type: AWS::SSM::Parameter
+    Condition: HasOidcId
+    Properties:
+      Name: !Sub /skyhook/${Environment}/clusters/${ClusterName}/karpenter-role-arn
+      Type: String
+      Value: !GetAtt KarpenterControllerRole.Arn
+
+  NthRoleArnParameter:
+    Type: AWS::SSM::Parameter
+    Condition: HasOidcId
+    Properties:
+      Name: !Sub /skyhook/${Environment}/clusters/${ClusterName}/nth-role-arn
+      Type: String
+      Value: !GetAtt NodeTerminationHandlerRole.Arn
+
+  NodeRoleArnParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/clusters/${ClusterName}/node-role-arn
+      Type: String
+      Value: !GetAtt KarpenterNodeRole.Arn
+
+  K8sGPTRoleArnParameter:
+    Type: AWS::SSM::Parameter
+    Condition: HasOidcId
+    Properties:
+      Name: !Sub /skyhook/${Environment}/clusters/${ClusterName}/k8sgpt-role-arn
+      Type: String
+      Value: !GetAtt K8sGPTRole.Arn
+
+  KedaRoleArnParameter:
+    Type: AWS::SSM::Parameter
+    Condition: HasOidcId
+    Properties:
+      Name: !Sub /skyhook/${Environment}/clusters/${ClusterName}/keda-role-arn
+      Type: String
+      Value: !GetAtt KedaRole.Arn
+
+  EbsCsiRoleArnParameter:
+    Type: AWS::SSM::Parameter
+    Condition: HasOidcId
+    Properties:
+      Name: !Sub /skyhook/${Environment}/clusters/${ClusterName}/ebs-csi-role-arn
+      Type: String
+      Value: !GetAtt EbsCsiControllerRole.Arn
+
+  EfsCsiRoleArnParameter:
+    Type: AWS::SSM::Parameter
+    Condition: HasOidcId
+    Properties:
+      Name: !Sub /skyhook/${Environment}/clusters/${ClusterName}/efs-csi-role-arn
+      Type: String
+      Value: !GetAtt EfsCsiControllerRole.Arn
+
+  FsxCsiRoleArnParameter:
+    Type: AWS::SSM::Parameter
+    Condition: HasOidcId
+    Properties:
+      Name: !Sub /skyhook/${Environment}/clusters/${ClusterName}/fsx-csi-role-arn
+      Type: String
+      Value: !GetAtt FsxCsiControllerRole.Arn
+
+  SecretsStoreCsiRoleArnParameter:
+    Type: AWS::SSM::Parameter
+    Condition: HasOidcId
+    Properties:
+      Name: !Sub /skyhook/${Environment}/clusters/${ClusterName}/secrets-store-csi-role-arn
+      Type: String
+      Value: !GetAtt SecretsStoreCsiRole.Arn
+
+  LoadBalancerControllerRoleArnParameter:
+    Type: AWS::SSM::Parameter
+    Condition: HasOidcId
+    Properties:
+      Name: !Sub /skyhook/${Environment}/clusters/${ClusterName}/aws-lb-controller-role-arn
+      Type: String
+      Value: !GetAtt LoadBalancerControllerRole.Arn
+
+Outputs:
+  KarpenterControllerRoleArn:
+    Condition: HasOidcId
+    Description: Karpenter controller IAM role ARN
+    Value: !GetAtt KarpenterControllerRole.Arn
+    Export:
+      Name: !Sub ${ClusterName}-karpenter-role-arn
+
+  NodeTerminationHandlerRoleArn:
+    Condition: HasOidcId
+    Description: Node Termination Handler IAM role ARN
+    Value: !GetAtt NodeTerminationHandlerRole.Arn
+    Export:
+      Name: !Sub ${ClusterName}-nth-role-arn
+
+  FluentBitRoleArn:
+    Condition: HasOidcId
+    Description: Fluent Bit IAM role ARN
+    Value: !GetAtt FluentBitRole.Arn
+    Export:
+      Name: !Sub ${ClusterName}-fluent-bit-role-arn
+
+  ExternalDnsRoleArn:
+    Condition: HasOidcId
+    Description: External DNS IAM role ARN
+    Value: !GetAtt ExternalDnsRole.Arn
+    Export:
+      Name: !Sub ${ClusterName}-external-dns-role-arn
+
+  KarpenterNodeRoleArn:
+    Description: Karpenter node IAM role ARN
+    Value: !GetAtt KarpenterNodeRole.Arn
+    Export:
+      Name: !Sub ${ClusterName}-node-role-arn
+
+  KarpenterNodeInstanceProfileName:
+    Description: Karpenter node instance profile name
+    Value: !Ref KarpenterNodeInstanceProfile
+    Export:
+      Name: !Sub ${ClusterName}-node-instance-profile
+
+  K8sGPTRoleArn:
+    Condition: HasOidcId
+    Description: K8sGPT IAM role ARN for Amazon Bedrock access
+    Value: !GetAtt K8sGPTRole.Arn
+    Export:
+      Name: !Sub ${ClusterName}-k8sgpt-role-arn
+
+  KedaRoleArn:
+    Condition: HasOidcId
+    Description: KEDA IAM role ARN for AWS scalers
+    Value: !GetAtt KedaRole.Arn
+    Export:
+      Name: !Sub ${ClusterName}-keda-role-arn
+
+  EbsCsiControllerRoleArn:
+    Condition: HasOidcId
+    Description: EBS CSI Controller IAM role ARN
+    Value: !GetAtt EbsCsiControllerRole.Arn
+    Export:
+      Name: !Sub ${ClusterName}-ebs-csi-role-arn
+
+  EfsCsiControllerRoleArn:
+    Condition: HasOidcId
+    Description: EFS CSI Controller IAM role ARN
+    Value: !GetAtt EfsCsiControllerRole.Arn
+    Export:
+      Name: !Sub ${ClusterName}-efs-csi-role-arn
+
+  FsxCsiControllerRoleArn:
+    Condition: HasOidcId
+    Description: FSx CSI Controller IAM role ARN
+    Value: !GetAtt FsxCsiControllerRole.Arn
+    Export:
+      Name: !Sub ${ClusterName}-fsx-csi-role-arn
+
+  SecretsStoreCsiRoleArn:
+    Condition: HasOidcId
+    Description: Secrets Store CSI Driver IAM role ARN
+    Value: !GetAtt SecretsStoreCsiRole.Arn
+    Export:
+      Name: !Sub ${ClusterName}-secrets-store-csi-role-arn
+
+  LoadBalancerControllerRoleArn:
+    Condition: HasOidcId
+    Description: AWS Load Balancer Controller IAM role ARN
+    Value: !GetAtt LoadBalancerControllerRole.Arn
+    Export:
+      Name: !Sub ${ClusterName}-aws-lb-controller-role-arn
+

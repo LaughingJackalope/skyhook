@@ -1,0 +1,453 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  HPC-optimized VPC for Skyhook foundation layer.
+  Designed for EFA networking, GPU workloads, and FSx connectivity.
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Environment identifier (e.g., accel-usw2)
+    AllowedPattern: "[a-z0-9-]+"
+
+  VpcCidr:
+    Type: String
+    Default: "10.0.0.0/16"
+    Description: CIDR block for the VPC (must be /16 for proper subnet allocation)
+
+  # AZ Selection - p4d/p5 availability varies by AZ
+  PrimaryAZ:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: us-west-2a
+    Description: Primary AZ for HPC workloads (choose AZ with p4d/p5 capacity)
+
+  SecondaryAZ:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: us-west-2b
+    Description: Secondary AZ for HA and overflow capacity
+
+  TertiaryAZ:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Default: us-west-2c
+    Description: Tertiary AZ for system components only
+
+Resources:
+  #============================================================================
+  # VPC
+  #============================================================================
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-vpc
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+
+  #============================================================================
+  # Internet Gateway
+  #============================================================================
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-igw
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  #============================================================================
+  # Public Subnets (NAT, ALB) - /24 each = 256 IPs
+  #============================================================================
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref PrimaryAZ
+      CidrBlock: !Select [0, !Cidr [!Ref VpcCidr, 256, 8]]  # 10.0.0.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-public-${PrimaryAZ}
+        - Key: skyhook.io/subnet-role
+          Value: public
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref SecondaryAZ
+      CidrBlock: !Select [1, !Cidr [!Ref VpcCidr, 256, 8]]  # 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-public-${SecondaryAZ}
+        - Key: skyhook.io/subnet-role
+          Value: public
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref TertiaryAZ
+      CidrBlock: !Select [2, !Cidr [!Ref VpcCidr, 256, 8]]  # 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-public-${TertiaryAZ}
+        - Key: skyhook.io/subnet-role
+          Value: public
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+
+  #============================================================================
+  # System Subnets (Control Plane, System Pods) - /22 each = 1024 IPs
+  #============================================================================
+  SystemSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref PrimaryAZ
+      CidrBlock: "10.0.10.0/22"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-system-${PrimaryAZ}
+        - Key: skyhook.io/subnet-role
+          Value: system
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+
+  SystemSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref SecondaryAZ
+      CidrBlock: "10.0.14.0/22"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-system-${SecondaryAZ}
+        - Key: skyhook.io/subnet-role
+          Value: system
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+
+  SystemSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref TertiaryAZ
+      CidrBlock: "10.0.18.0/22"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-system-${TertiaryAZ}
+        - Key: skyhook.io/subnet-role
+          Value: system
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+
+  #============================================================================
+  # HPC Subnets (GPU Nodes, EFA) - /19 each = 8192 IPs
+  # Large subnets for: EFA ENIs (4 per p4d), prefix delegation (/28 per ENI)
+  #============================================================================
+  HpcSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref PrimaryAZ
+      CidrBlock: "10.0.32.0/19"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-hpc-${PrimaryAZ}
+        - Key: skyhook.io/subnet-role
+          Value: hpc
+        - Key: skyhook.io/efa-enabled
+          Value: "true"
+
+  HpcSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref SecondaryAZ
+      CidrBlock: "10.0.64.0/19"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-hpc-${SecondaryAZ}
+        - Key: skyhook.io/subnet-role
+          Value: hpc
+        - Key: skyhook.io/efa-enabled
+          Value: "true"
+
+  #============================================================================
+  # Storage Subnet (FSx Mount Targets) - /24 = 256 IPs
+  # Same AZ as primary HPC for lowest latency
+  #============================================================================
+  StorageSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Ref PrimaryAZ
+      CidrBlock: "10.0.128.0/24"
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-storage-${PrimaryAZ}
+        - Key: skyhook.io/subnet-role
+          Value: storage
+
+  #============================================================================
+  # NAT Gateways (HA - one per AZ used by system subnets)
+  #============================================================================
+  NatEip1:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-nat-eip-1
+
+  NatEip2:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-nat-eip-2
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip1.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-nat-${PrimaryAZ}
+
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip2.AllocationId
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-nat-${SecondaryAZ}
+
+  #============================================================================
+  # Route Tables
+  #============================================================================
+  
+  # Public Route Table (shared by all public subnets)
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-public-rt
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet3
+      RouteTableId: !Ref PublicRouteTable
+
+  # Private Route Table 1 (Primary AZ - system, hpc, storage)
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-private-rt-${PrimaryAZ}
+
+  PrivateDefaultRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId: !Ref NatGateway1
+
+  SystemSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SystemSubnet1
+      RouteTableId: !Ref PrivateRouteTable1
+
+  HpcSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref HpcSubnet1
+      RouteTableId: !Ref PrivateRouteTable1
+
+  StorageSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref StorageSubnet
+      RouteTableId: !Ref PrivateRouteTable1
+
+  # Private Route Table 2 (Secondary AZ)
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-private-rt-${SecondaryAZ}
+
+  PrivateDefaultRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId: !Ref NatGateway2
+
+  SystemSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SystemSubnet2
+      RouteTableId: !Ref PrivateRouteTable2
+
+  HpcSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref HpcSubnet2
+      RouteTableId: !Ref PrivateRouteTable2
+
+  # Private Route Table 3 (Tertiary AZ - system only, uses NAT 1 for cost)
+  PrivateRouteTable3:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-private-rt-${TertiaryAZ}
+
+  PrivateDefaultRoute3:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable3
+      DestinationCidrBlock: "0.0.0.0/0"
+      NatGatewayId: !Ref NatGateway1  # Reuse NAT 1 to save cost
+
+  SystemSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SystemSubnet3
+      RouteTableId: !Ref PrivateRouteTable3
+
+  #============================================================================
+  # SSM Parameters (for cluster layer consumption)
+  #============================================================================
+  VpcIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/vpc-id
+      Type: String
+      Value: !Ref VPC
+      Description: VPC ID for Skyhook foundation
+
+  SystemSubnetIdsParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/system-subnet-ids
+      Type: StringList
+      Value: !Join [",", [!Ref SystemSubnet1, !Ref SystemSubnet2, !Ref SystemSubnet3]]
+      Description: System subnet IDs for EKS control plane and system nodes
+
+  HpcSubnetIdsParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/hpc-subnet-ids
+      Type: StringList
+      Value: !Join [",", [!Ref HpcSubnet1, !Ref HpcSubnet2]]
+      Description: HPC subnet IDs for Karpenter GPU nodes
+
+  StorageSubnetIdParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/storage-subnet-id
+      Type: String
+      Value: !Ref StorageSubnet
+      Description: Storage subnet ID for FSx mount targets
+
+  PrimaryAZParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/primary-az
+      Type: String
+      Value: !Ref PrimaryAZ
+      Description: Primary availability zone for HPC workloads
+
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref VPC
+
+  VpcCidr:
+    Description: VPC CIDR block
+    Value: !Ref VpcCidr
+
+  PublicSubnetIds:
+    Description: Public subnet IDs (comma-separated)
+    Value: !Join [",", [!Ref PublicSubnet1, !Ref PublicSubnet2, !Ref PublicSubnet3]]
+
+  SystemSubnetIds:
+    Description: System subnet IDs (comma-separated)
+    Value: !Join [",", [!Ref SystemSubnet1, !Ref SystemSubnet2, !Ref SystemSubnet3]]
+
+  HpcSubnetIds:
+    Description: HPC subnet IDs (comma-separated)
+    Value: !Join [",", [!Ref HpcSubnet1, !Ref HpcSubnet2]]
+
+  StorageSubnetId:
+    Description: Storage subnet ID
+    Value: !Ref StorageSubnet
+
+  PrivateRouteTableIds:
+    Description: Private route table IDs for VPC endpoint associations
+    Value: !Join [",", [!Ref PrivateRouteTable1, !Ref PrivateRouteTable2, !Ref PrivateRouteTable3]]
+
+  PrimaryAZ:
+    Description: Primary availability zone
+    Value: !Ref PrimaryAZ
+
+  SecondaryAZ:
+    Description: Secondary availability zone
+    Value: !Ref SecondaryAZ
+

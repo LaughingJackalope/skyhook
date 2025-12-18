@@ -1,0 +1,100 @@
+# AWS EBS CSI Driver Helm Values
+# Chart: aws-ebs-csi-driver
+# Repo: https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+# Version: 2.32.0
+
+controller:
+  replicaCount: 2
+  serviceAccount:
+    create: true
+    name: ebs-csi-controller-sa
+    # IRSA annotation - set via cluster overlay or --set
+    annotations: {}
+  resources:
+    requests:
+      cpu: 10m
+      memory: 40Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: aws-ebs-csi-driver
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+node:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 40Mi
+    limits:
+      cpu: 100m
+      memory: 256Mi
+  tolerateAllTaints: true
+
+sidecars:
+  provisioner:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 40Mi
+      limits:
+        cpu: 100m
+        memory: 256Mi
+  attacher:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 40Mi
+      limits:
+        cpu: 100m
+        memory: 256Mi
+  snapshotter:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 40Mi
+      limits:
+        cpu: 100m
+        memory: 256Mi
+  resizer:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 40Mi
+      limits:
+        cpu: 100m
+        memory: 256Mi
+
+storageClasses:
+  - name: gp3
+    annotations:
+      storageclass.kubernetes.io/is-default-class: "true"
+    parameters:
+      type: gp3
+      encrypted: "true"
+    reclaimPolicy: Delete
+    volumeBindingMode: WaitForFirstConsumer
+    allowVolumeExpansion: true
+  - name: gp3-retain
+    parameters:
+      type: gp3
+      encrypted: "true"
+    reclaimPolicy: Retain
+    volumeBindingMode: WaitForFirstConsumer
+    allowVolumeExpansion: true
+  - name: io2
+    parameters:
+      type: io2
+      iopsPerGB: "50"
+      encrypted: "true"
+    reclaimPolicy: Delete
+    volumeBindingMode: WaitForFirstConsumer
+    allowVolumeExpansion: true
+

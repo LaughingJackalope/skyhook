@@ -1,0 +1,164 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Cluster Placement Groups for Skyhook foundation layer.
+  Pre-created placement groups for EFA networking in HPC workloads.
+  Karpenter references these by name across cluster releases.
+
+Parameters:
+  Environment:
+    Type: String
+    Description: Environment identifier (e.g., accel-usw2)
+
+  PrimaryAZ:
+    Type: String
+    Description: Primary availability zone (e.g., us-west-2a)
+
+  SecondaryAZ:
+    Type: String
+    Description: Secondary availability zone (e.g., us-west-2b)
+
+Resources:
+  #============================================================================
+  # Cluster Placement Groups
+  # 
+  # Placement groups ensure instances are physically close for lowest latency.
+  # For EFA, all instances in a multi-node training job should be in the same
+  # placement group for optimal NCCL performance.
+  #
+  # Strategy:
+  # - "cluster" strategy places instances close together (best for EFA)
+  # - Multiple groups allow scheduling isolation between large jobs
+  # - Groups are AZ-specific (placement groups don't span AZs)
+  #============================================================================
+
+  # Primary AZ - Main HPC capacity
+  PlacementGroupPrimaryAlpha:
+    Type: AWS::EC2::PlacementGroup
+    Properties:
+      GroupName: !Sub skyhook-${Environment}-cpg-${PrimaryAZ}-alpha
+      Strategy: cluster
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-cpg-${PrimaryAZ}-alpha
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/az
+          Value: !Ref PrimaryAZ
+        - Key: skyhook.io/placement-tier
+          Value: primary
+
+  PlacementGroupPrimaryBeta:
+    Type: AWS::EC2::PlacementGroup
+    Properties:
+      GroupName: !Sub skyhook-${Environment}-cpg-${PrimaryAZ}-beta
+      Strategy: cluster
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-cpg-${PrimaryAZ}-beta
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/az
+          Value: !Ref PrimaryAZ
+        - Key: skyhook.io/placement-tier
+          Value: overflow
+
+  # Secondary AZ - Fallback capacity
+  PlacementGroupSecondaryAlpha:
+    Type: AWS::EC2::PlacementGroup
+    Properties:
+      GroupName: !Sub skyhook-${Environment}-cpg-${SecondaryAZ}-alpha
+      Strategy: cluster
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-cpg-${SecondaryAZ}-alpha
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/az
+          Value: !Ref SecondaryAZ
+        - Key: skyhook.io/placement-tier
+          Value: fallback
+
+  #============================================================================
+  # Spread Placement Group (for system components)
+  #
+  # Spread strategy maximizes availability by placing instances on different
+  # hardware. Good for control plane components that need HA, not performance.
+  #============================================================================
+  PlacementGroupSystemSpread:
+    Type: AWS::EC2::PlacementGroup
+    Properties:
+      GroupName: !Sub skyhook-${Environment}-cpg-system-spread
+      Strategy: spread
+      SpreadLevel: rack
+      Tags:
+        - Key: Name
+          Value: !Sub skyhook-${Environment}-cpg-system-spread
+        - Key: skyhook.io/environment
+          Value: !Ref Environment
+        - Key: skyhook.io/placement-tier
+          Value: system
+
+  #============================================================================
+  # SSM Parameters (for Karpenter and cluster consumption)
+  #============================================================================
+  PlacementGroupPrimaryAlphaParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/placement-group-primary-alpha
+      Type: String
+      Value: !Sub skyhook-${Environment}-cpg-${PrimaryAZ}-alpha
+      Description: Primary placement group name in primary AZ
+
+  PlacementGroupPrimaryBetaParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/placement-group-primary-beta
+      Type: String
+      Value: !Sub skyhook-${Environment}-cpg-${PrimaryAZ}-beta
+      Description: Overflow placement group name in primary AZ
+
+  PlacementGroupSecondaryAlphaParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/placement-group-secondary-alpha
+      Type: String
+      Value: !Sub skyhook-${Environment}-cpg-${SecondaryAZ}-alpha
+      Description: Fallback placement group name in secondary AZ
+
+  PlacementGroupListParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /skyhook/${Environment}/placement-groups
+      Type: StringList
+      Value: !Join
+        - ","
+        - - !Sub skyhook-${Environment}-cpg-${PrimaryAZ}-alpha
+          - !Sub skyhook-${Environment}-cpg-${PrimaryAZ}-beta
+          - !Sub skyhook-${Environment}-cpg-${SecondaryAZ}-alpha
+      Description: All HPC placement group names (comma-separated)
+
+Outputs:
+  PlacementGroupPrimaryAlpha:
+    Description: Primary placement group in primary AZ
+    Value: !Ref PlacementGroupPrimaryAlpha
+
+  PlacementGroupPrimaryBeta:
+    Description: Overflow placement group in primary AZ
+    Value: !Ref PlacementGroupPrimaryBeta
+
+  PlacementGroupSecondaryAlpha:
+    Description: Fallback placement group in secondary AZ
+    Value: !Ref PlacementGroupSecondaryAlpha
+
+  PlacementGroupSystemSpread:
+    Description: Spread placement group for system components
+    Value: !Ref PlacementGroupSystemSpread
+
+  AllPlacementGroups:
+    Description: All HPC placement group names (comma-separated)
+    Value: !Join
+      - ","
+      - - !Sub skyhook-${Environment}-cpg-${PrimaryAZ}-alpha
+        - !Sub skyhook-${Environment}-cpg-${PrimaryAZ}-beta
+        - !Sub skyhook-${Environment}-cpg-${SecondaryAZ}-alpha
+
