@@ -12,6 +12,7 @@ Cluster Release (days/weeks)
 ├── IAM Roles (Karpenter, NTH, Fluent Bit, External DNS)
 ├── ConfigMaps (cluster-config, karpenter-values)
 └── Flux GitOps (platform services)
+    └── Data Layer (Trino, Spark, Delta Lake)
 ```
 
 ## Live Cluster (skyhook-accel-usw2-v42)
