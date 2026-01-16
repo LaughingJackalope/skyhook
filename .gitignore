@@ -1,20 +1,30 @@
-# Platform environment (contains IRSA ARNs and queue URLs)
+# Environment files - NEVER commit these
+.env
+.env.*
+.envrc
+*.env
 platform/.env
 
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
 .venv/
 venv/
+env/
+.pytest_cache/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
 
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
 
 # Terraform (if used)
 .terraform/
@@ -26,11 +36,41 @@ venv/
 kubeconfig
 *.kubeconfig
 
-# Secrets
+# Secrets and credentials
 *.pem
 *.key
+*.crt
+*.p12
+*.pfx
 secrets.yaml
 *-secrets.yaml
+credentials.json
+*credentials*.json
+.aws/
+.kube/
+
+# Generated files - do not commit
+cluster/.generated/
+.generated/
+*.generated.*
+
+# Build artifacts
+site/
+dist/
+build/
+
+# Claude/AI assistant config
+.claude/
+.gemini/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
 
 
 
