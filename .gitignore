@@ -1,6 +1,9 @@
 # Platform environment (contains IRSA ARNs and queue URLs)
 platform/.env
 
+# Docs build output
+site/
+
 # Python
 __pycache__/
 *.py[cod]
